@@ -14,17 +14,18 @@ class KeywordRepository:
     def __init__(self):
         self.db = get_db()
 
-    def save_keyword(self, kw: KeywordResult) -> int:
+    def save_keyword(self, kw: KeywordResult, run_batch_id: int = None) -> int:
         """保存关键词，返回ID"""
         sql = """
-            INSERT INTO extracted_keywords 
-            (keyword, source_news_id, domain_id, llm_provider, confidence, created_at)
-            VALUES (%s, %s, %s, %s, %s, NOW())
-            ON DUPLICATE KEY UPDATE 
+            INSERT INTO extracted_keywords
+            (keyword, source_news_id, domain_id, llm_provider, confidence, run_batch_id, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            ON DUPLICATE KEY UPDATE
                 source_news_id=VALUES(source_news_id),
                 domain_id=VALUES(domain_id),
                 llm_provider=VALUES(llm_provider),
-                confidence=VALUES(confidence)
+                confidence=VALUES(confidence),
+                run_batch_id=VALUES(run_batch_id)
         """
         with self.db.get_cursor() as cursor:
             cursor.execute(
@@ -35,28 +36,30 @@ class KeywordRepository:
                     kw.domain_id,
                     kw.llm_provider,
                     kw.confidence,
+                    run_batch_id,
                 ),
             )
             cursor.execute("SELECT LAST_INSERT_ID()")
             return cursor.fetchone()[0]
 
-    def bulk_save(self, keywords: List[KeywordResult]) -> int:
+    def bulk_save(self, keywords: List[KeywordResult], run_batch_id: int = None) -> int:
         """批量保存关键词"""
         if not keywords:
             return 0
 
         sql = """
-            INSERT INTO extracted_keywords 
-            (keyword, source_news_id, domain_id, llm_provider, confidence, created_at)
-            VALUES (%s, %s, %s, %s, %s, NOW())
-            ON DUPLICATE KEY UPDATE 
+            INSERT INTO extracted_keywords
+            (keyword, source_news_id, domain_id, llm_provider, confidence, run_batch_id, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            ON DUPLICATE KEY UPDATE
                 source_news_id=VALUES(source_news_id),
                 domain_id=VALUES(domain_id),
                 llm_provider=VALUES(llm_provider),
-                confidence=VALUES(confidence)
+                confidence=VALUES(confidence),
+                run_batch_id=VALUES(run_batch_id)
         """
         data = [
-            (k.keyword, k.source_news_id, k.domain_id, k.llm_provider, k.confidence)
+            (k.keyword, k.source_news_id, k.domain_id, k.llm_provider, k.confidence, run_batch_id)
             for k in keywords
         ]
 
@@ -119,13 +122,72 @@ class KeywordRepository:
             cursor.execute(sql, (keyword_id,))
             return cursor.rowcount > 0
 
-    def get_never_crawled(self, domain_id: int = None, limit: int = 50) -> List[dict]:
-        """获取从未爬取过的关键词"""
+    def get_never_crawled(self, domain_id: int = None, limit: int = 50, run_batch_id: int = None) -> List[dict]:
+        """获取从未爬取过的关键词
+
+        Args:
+            domain_id: 领域ID，可选
+            limit: 限制数量
+            run_batch_id: 运行批次ID，如果指定则只返回该批次的关键词
+        """
         sql = """
-            SELECT * FROM extracted_keywords 
+            SELECT * FROM extracted_keywords
             WHERE search_count = 0
         """
         params = []
+        if domain_id:
+            sql += " AND domain_id = %s"
+            params.append(domain_id)
+        if run_batch_id:
+            sql += " AND run_batch_id = %s"
+            params.append(run_batch_id)
+        sql += " ORDER BY confidence DESC LIMIT %s"
+        params.append(limit)
+
+        with self.db.get_cursor(commit=False) as cursor:
+            cursor.execute(sql, tuple(params))
+            rows = cursor.fetchall()
+            return [dict(zip([c[0] for c in cursor.description], row)) for row in rows]
+
+    def get_by_batch(self, run_batch_id: int, limit: int = 100) -> List[dict]:
+        """获取指定运行批次中的所有关键词
+
+        Args:
+            run_batch_id: 运行批次ID
+            limit: 限制数量
+
+        Returns:
+            关键词列表
+        """
+        sql = """
+            SELECT * FROM extracted_keywords
+            WHERE run_batch_id = %s
+            ORDER BY confidence DESC, created_at DESC
+            LIMIT %s
+        """
+        with self.db.get_cursor(commit=False) as cursor:
+            cursor.execute(sql, (run_batch_id, limit))
+            rows = cursor.fetchall()
+            return [dict(zip([c[0] for c in cursor.description], row)) for row in rows]
+
+    def get_by_batch_never_crawled(self, run_batch_id: int, domain_id: int = None, limit: int = 50) -> List[dict]:
+        """获取指定运行批次中未爬取过的关键词
+
+        这是推荐用的方法，用于爬虫触发，确保只爬取当前运行提取的关键词
+
+        Args:
+            run_batch_id: 运行批次ID
+            domain_id: 领域ID，可选
+            limit: 限制数量
+
+        Returns:
+            未爬取的关键词列表
+        """
+        sql = """
+            SELECT * FROM extracted_keywords
+            WHERE run_batch_id = %s AND search_count = 0
+        """
+        params = [run_batch_id]
         if domain_id:
             sql += " AND domain_id = %s"
             params.append(domain_id)

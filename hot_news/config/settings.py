@@ -13,23 +13,16 @@ from typing import List, Optional
 from datetime import datetime
 
 
-# 尝试从多个路径加载 .env 文件
-env_paths = [
-    "../MediaCrawler/.env",  # 从 SentimentSpider 根目录
-    "../../MediaCrawler/.env",  # 从 hot_news 目录
-    "./.env",  # 当前目录
-    "../.env",  # 上级目录
-]
+import os
+from pathlib import Path
 
-loaded = False
-for env_path in env_paths:
-    if load_dotenv(env_path):
-        print(f"[Config] 加载 .env: {env_path}")
-        loaded = True
-        break
-
-if not loaded:
-    load_dotenv()  # 使用默认路径
+# 计算 .env 文件路径（相对于 hot_news/config 目录）
+env_file = Path(__file__).parent.parent.parent / "MediaCrawler" / ".env"
+if env_file.exists():
+    load_dotenv(str(env_file))
+    print(f"[Config] 加载 .env: {env_file}")
+else:
+    load_dotenv()
 
 
 class DBConfig(BaseModel):
@@ -64,7 +57,7 @@ class DomainConfig(BaseModel):
     domain_name: str
     domain_keywords: str = ""
     is_enabled: int = 1
-    description: str = ""
+    description: Optional[str] = None
 
 
 class LLMConfig(BaseModel):

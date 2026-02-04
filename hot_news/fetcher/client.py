@@ -38,9 +38,20 @@ class OrzAiClient:
         url = f"{self.BASE_URL}/dailynews/"
         params = {"platform": platform}
 
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        }
+
         try:
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
+            response = await self.client.get(
+                url, params=params, headers=headers, follow_redirects=True
+            )
+            if response.status_code >= 400:
+                print(f"[OrzAiClient] HTTP错误: 状态码 {response.status_code}")
+                return []
+
             data = response.json()
 
             if data.get("status") == "200":
@@ -121,8 +132,8 @@ class OrzAiFetcher(BaseFetcher):
                 platform_code=self.platform_code,
                 title=news.get("title", ""),
                 url=news.get("url", ""),
-                score=news.get("score", ""),
-                description=news.get("description", ""),
+                score=news.get("hot", ""),
+                description=news.get("content", "") or news.get("description", ""),
                 created_at=datetime.now(),
             )
             items.append(item)

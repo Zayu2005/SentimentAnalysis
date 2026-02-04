@@ -14,7 +14,7 @@ cmd_fetch = typer.Typer(help="获取热点新闻")
 
 
 @cmd_fetch.command("fetch")
-def fetch_hot_news(
+def fetch(
     platforms: Optional[List[str]] = typer.Argument(
         None, help="平台列表，如 weibo zhihu bilibili"
     ),

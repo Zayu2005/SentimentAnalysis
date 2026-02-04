@@ -1,11 +1,11 @@
-'''
+"""
 Author: Zayy2005x 2781310592@qq.com
 Date: 2026-02-03 22:07:13
 LastEditors: Zayy2005x 2781310592@qq.com
 LastEditTime: 2026-02-04 00:57:03
-FilePath: \MediaCrawler\config\db_config.py
+FilePath: /MediaCrawler/config/db_config.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
-'''
+"""
 # -*- coding: utf-8 -*-
 # Copyright (c) 2025 relakkes@gmail.com
 #
@@ -24,7 +24,6 @@ Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查�
 #
 # 详细许可条款请参阅项目根目录下的LICENSE文件。
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
-
 
 import os
 
@@ -55,11 +54,11 @@ CACHE_TYPE_REDIS = "redis"
 CACHE_TYPE_MEMORY = "memory"
 
 # sqlite config
-SQLITE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "sqlite_tables.db")
+SQLITE_DB_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "database", "sqlite_tables.db"
+)
 
-sqlite_db_config = {
-    "db_path": SQLITE_DB_PATH
-}
+sqlite_db_config = {"db_path": SQLITE_DB_PATH}
 
 # mongodb config
 MONGODB_HOST = os.getenv("MONGODB_HOST", "localhost")

@@ -34,9 +34,14 @@ class CrawlTrigger:
         Returns:
             是否成功触发
         """
+        process = None
         try:
+            conda_python = r"E:\develop\anaconda3\envs\sentiment\python.exe"
+            if not os.path.exists(conda_python):
+                conda_python = sys.executable
+
             cmd = [
-                sys.executable,
+                conda_python,
                 os.path.join(
                     os.path.dirname(__file__), "..", "..", "MediaCrawler", "main.py"
                 ),
@@ -57,7 +62,10 @@ class CrawlTrigger:
             ]
 
             env = os.environ.copy()
-            env["PYTHONPATH"] = os.path.dirname(__file__)
+            mediacrawler_dir = os.path.join(
+                os.path.dirname(__file__), "..", "..", "MediaCrawler"
+            )
+            env["PYTHONPATH"] = mediacrawler_dir
 
             process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
@@ -75,7 +83,8 @@ class CrawlTrigger:
                 return False
 
         except subprocess.TimeoutExpired:
-            process.kill()
+            if process:
+                process.kill()
             print(f"[CrawlTrigger] 爬取超时: {keyword} @ {platform}")
             return False
         except Exception as e:

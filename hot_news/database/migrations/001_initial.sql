@@ -116,10 +116,12 @@ CREATE TABLE IF NOT EXISTS extracted_keywords (
     confidence DECIMAL(5,2) COMMENT '关键词置信度/权重',
     search_count INT DEFAULT 0 COMMENT '被用于搜索爬取的次数',
     last_used DATETIME COMMENT '最后使用时间',
+    run_batch_id INT DEFAULT NULL COMMENT '运行批次ID，关联task_execution_log的id',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '提取时间',
     INDEX idx_keyword (keyword),
     INDEX idx_domain (domain_id),
-    INDEX idx_search (search_count)
+    INDEX idx_search (search_count),
+    INDEX idx_run_batch_id (run_batch_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='从热点新闻中提取的关键词表';
 
 -- 关键词爬取记录表

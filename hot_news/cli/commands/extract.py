@@ -13,7 +13,7 @@ from hot_news.models.entities import HotNewsItem
 cmd_extract = typer.Typer(help="提取关键词")
 
 
-@cmd_extract.command("extract")
+@cmd_extract.command()
 def extract_keywords(
     domains: Optional[List[str]] = typer.Argument(None, help="领域列表，如 科技 金融"),
     limit: int = typer.Option(50, "--limit", "-l", help="提取的热点数量"),

@@ -11,7 +11,7 @@ from hot_news.crawler import CrawlTrigger
 cmd_crawl = typer.Typer(help="触发爬虫")
 
 
-@cmd_crawl.command("crawl")
+@cmd_crawl.command()
 def trigger_crawl(
     platforms: List[str] = typer.Argument(..., help="爬虫平台列表，如 xhs dy bili"),
     keywords: Optional[List[str]] = typer.Option(

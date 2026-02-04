@@ -13,7 +13,7 @@ from hot_news.models.entities import HotNewsItem
 cmd_analyze = typer.Typer(help="分析热点领域匹配")
 
 
-@cmd_analyze.command("analyze")
+@cmd_analyze.command()
 def analyze_domain_match(
     domains: Optional[List[str]] = typer.Argument(None, help="领域列表，如 科技 金融"),
     limit: int = typer.Option(100, "--limit", "-l", help="分析的热点数量"),
