@@ -20,7 +20,7 @@ class CrawlTrigger:
         self.crawl_log_repo = CrawlLogRepository()
 
     def trigger_crawl(
-        self, keyword: str, platform: str, max_notes: int = 30, max_comments: int = 10
+        self, keyword: str, platform: str, max_comments: int = 10
     ) -> bool:
         """
         触发爬虫
@@ -28,7 +28,6 @@ class CrawlTrigger:
         Args:
             keyword: 搜索关键词
             platform: 平台代码
-            max_notes: 最大笔记数
             max_comments: 最大评论数
 
         Returns:
@@ -36,25 +35,29 @@ class CrawlTrigger:
         """
         process = None
         try:
+            # 获取 MediaCrawler 目录的绝对路径
+            mediacrawler_dir = os.path.abspath(os.path.join(
+                os.path.dirname(__file__), "..", "..", "MediaCrawler"
+            ))
+
+            # 优先使用 conda sentiment 环境
             conda_python = r"E:\develop\anaconda3\envs\sentiment\python.exe"
-            if not os.path.exists(conda_python):
-                conda_python = sys.executable
+            if os.path.exists(conda_python):
+                python_exe = conda_python
+            else:
+                python_exe = sys.executable
 
             cmd = [
-                conda_python,
-                os.path.join(
-                    os.path.dirname(__file__), "..", "..", "MediaCrawler", "main.py"
-                ),
+                python_exe,
+                "main.py",
                 "--platform",
                 platform,
                 "--lt",
-                "cookie",  # 使用cookie登录，需要提前配置
+                "cookie",
                 "--type",
                 "search",
                 "--keywords",
                 keyword,
-                "--max_notes_count",
-                str(max_notes),
                 "--max_comments_count_singlenotes",
                 str(max_comments),
                 "--save_data_option",
@@ -62,13 +65,16 @@ class CrawlTrigger:
             ]
 
             env = os.environ.copy()
-            mediacrawler_dir = os.path.join(
-                os.path.dirname(__file__), "..", "..", "MediaCrawler"
-            )
             env["PYTHONPATH"] = mediacrawler_dir
+            env.pop("PYTHONHOME", None)
 
+            # 关键：设置工作目录为 MediaCrawler 目录
             process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=mediacrawler_dir  # 设置工作目录
             )
 
             stdout, stderr = process.communicate(timeout=600)
@@ -77,9 +83,16 @@ class CrawlTrigger:
                 print(f"[CrawlTrigger] 成功爬取: {keyword} @ {platform}")
                 return True
             else:
-                error = stderr.decode("utf-8", errors="ignore")
+                stdout_text = stdout.decode("utf-8", errors="ignore")
+                stderr_text = stderr.decode("utf-8", errors="ignore")
                 print(f"[CrawlTrigger] 爬取失败: {keyword} @ {platform}")
-                print(f"  错误: {error[:500]}")
+                print(f"  返回码: {process.returncode}")
+                print(f"  命令: {' '.join(cmd)}")
+                print(f"  工作目录: {mediacrawler_dir}")
+                if stdout_text.strip():
+                    print(f"  标准输出:\n{stdout_text[-2000:]}")
+                if stderr_text.strip():
+                    print(f"  标准错误:\n{stderr_text[-2000:]}")
                 return False
 
         except subprocess.TimeoutExpired:
@@ -96,7 +109,6 @@ class CrawlTrigger:
         keyword: str,
         platform: str,
         keyword_id: int = 0,
-        max_notes: int = 30,
         max_comments: int = 10,
     ) -> bool:
         """
@@ -106,7 +118,7 @@ class CrawlTrigger:
         if keyword_id:
             log_id = self.crawl_log_repo.create_log(keyword_id, platform, "processing")
 
-        success = self.trigger_crawl(keyword, platform, max_notes, max_comments)
+        success = self.trigger_crawl(keyword, platform, max_comments)
 
         if log_id:
             if success:
@@ -123,7 +135,6 @@ class CrawlTrigger:
         self,
         keywords: List[str],
         platforms: List[str],
-        max_notes: int = 30,
         max_comments: int = 10,
     ) -> int:
         """
@@ -136,7 +147,7 @@ class CrawlTrigger:
 
         for keyword in keywords:
             for platform in platforms:
-                if self.trigger_crawl(keyword, platform, max_notes, max_comments):
+                if self.trigger_crawl(keyword, platform, max_comments):
                     success_count += 1
 
         return success_count
@@ -178,7 +189,7 @@ class CrawlTrigger:
         success_count = 0
         for kw in keywords:
             for platform in platforms:
-                if self.trigger_crawl(kw["keyword"], platform, 30, 10):
+                if self.trigger_crawl(kw["keyword"], platform, 10):
                     success_count += 1
                     self.keyword_repo.increment_search_count(kw["id"])
 

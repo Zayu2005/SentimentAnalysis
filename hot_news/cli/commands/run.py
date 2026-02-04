@@ -127,7 +127,7 @@ async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_
 
     # 如果没有domain配置，从所有热点中提取（不筛选）
     elif all_news:
-        from hot_news.models.entities import DomainConfig
+        from hot_news.config.settings import DomainConfig
         virtual_domain = DomainConfig(
             id=0,
             domain_name="通用",
@@ -302,7 +302,7 @@ async def _run_pipeline_inner(
                 for kw in keywords:
                     for platform in crawl_platform_list:
                         try:
-                            if trigger.trigger_crawl(kw["keyword"], platform, 30, 10):
+                            if trigger.trigger_crawl(kw["keyword"], platform, 10):
                                 keyword_repo.increment_search_count(kw["id"])
                                 crawl_count += 1
                                 success_count += 1
