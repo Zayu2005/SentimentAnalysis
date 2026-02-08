@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude
+.claude/
+
+# Logs
+logs/
+*.log
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Cache
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Environment
+.env.local
+*.local.json
