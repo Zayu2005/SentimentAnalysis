@@ -1,27 +1,130 @@
 # SentimentAnalysis
 
-中文社交媒体情感分析系统，支持多平台数据采集、文本预处理和情感分析。
+中文社交媒体舆情分析系统，支持多平台数据采集、文本预处理和情感分析。
+
+## 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          SentimentAnalysis 舆情分析系统                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌───────────────┐    ┌───────────────┐    ┌───────────────┐              │
+│  │ SentimentSpider│    │SentimentProcessor│   │ SentimentModel│              │
+│  │   数据采集     │ ──▶│   数据预处理    │ ──▶│   情感分析    │              │
+│  └───────────────┘    └───────────────┘    └───────────────┘              │
+│         │                    │                    │                        │
+│         ▼                    ▼                    ▼                        │
+│  ┌─────────────────────────────────────────────────────────┐              │
+│  │                      MySQL 数据库                        │              │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐    │              │
+│  │  │原始数据  │  │统一数据  │  │预处理数据│  │情感结果  │    │              │
+│  │  │xhs_note │  │unified_ │  │*_cleaned│  │sentiment│    │              │
+│  │  │douyin_  │  │content  │  │*_segment│  │*_score  │    │              │
+│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘    │              │
+│  └─────────────────────────────────────────────────────────┘              │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## 数据处理流程
+
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│ 社交媒体  │     │  数据采集 │     │ 数据清洗  │     │ 情感分析  │     │  结果存储 │
+│  平台    │ ──▶ │  Spider  │ ──▶ │Processor │ ──▶ │  Model   │ ──▶ │ Database │
+└──────────┘     └──────────┘     └──────────┘     └──────────┘     └──────────┘
+     │                │                │                │                │
+     │                │                │                │                │
+     ▼                ▼                ▼                ▼                ▼
+  小红书           爬取内容         文本清洗        Qwen2.5/BERT      情感标签
+  抖音             爬取评论         中文分词        情感分类          情感分数
+  微博             数据同步         关键词提取      情绪识别          情绪标签
+  B站              统一格式         停用词过滤      18种情绪          统计分析
+  知乎               ...              ...            ...              ...
+```
 
 ## 快速开始
 
-```bash
-# 1. 克隆项目
-git clone https://github.com/Zayy2005x/SentimentAnalysis.git
-cd SentimentAnalysis
+### 1. 克隆项目
 
-# 2. 创建环境 (推荐使用 Conda)
+```bash
+git clone https://github.com/Zayu2005/SentimentAnalysis.git
+cd SentimentAnalysis
+```
+
+### 2. 创建虚拟环境
+
+**方式一：使用 Conda (推荐)**
+```bash
 conda create -n sentiment python=3.10
 conda activate sentiment
+```
 
-# 3. 安装依赖 (一次性安装所有模块依赖)
+**方式二：使用 venv**
+```bash
+python -m venv venv
+# Windows
+venv\Scripts\activate
+# Linux/Mac
+source venv/bin/activate
+```
+
+### 3. 安装依赖
+
+```bash
+# 安装所有依赖 (CPU 版本)
 pip install -r requirements.txt
 
-# 4. 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，设置数据库密码等配置
-
-# 5. 安装 Playwright 浏览器 (爬虫需要)
+# 安装 Playwright 浏览器 (爬虫需要)
 playwright install chromium
+```
+
+**GPU 环境配置 (可选，用于加速模型推理)**
+
+```bash
+# 先安装 CUDA 版本的 PyTorch (根据你的 CUDA 版本选择)
+# CUDA 11.8
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# CUDA 12.1
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# 然后安装其他依赖
+pip install -r requirements.txt
+```
+
+### 4. 配置环境变量
+
+```bash
+# 复制配置模板
+cp .env.example .env
+
+# 编辑 .env 文件，设置数据库密码
+# Windows 用户可以用记事本打开
+notepad .env
+```
+
+必须配置的项：
+```env
+MYSQL_DB_PWD=your_password_here
+```
+
+### 5. 初始化数据库
+
+```sql
+-- 创建数据库
+CREATE DATABASE sentiment DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+### 6. 验证安装
+
+```bash
+# 测试数据库连接
+python -m SentimentProcessor stats
+
+# 测试模型加载 (首次运行会下载模型)
+python test_qwen_base.py
 ```
 
 ## 项目结构
@@ -58,6 +161,8 @@ SentimentAnalysis/
 │
 ├── .env.example              # 环境变量模板
 ├── requirements.txt          # 统一依赖文件
+├── run_qwen_analyze.py       # Qwen 分析脚本
+├── test_qwen_base.py         # 模型测试脚本
 └── README.md
 ```
 
@@ -67,153 +172,143 @@ SentimentAnalysis/
 
 支持多个主流社交媒体平台的数据采集：
 
-- **小红书** (Xiaohongshu)
-- **抖音** (Douyin)
-- **快手** (Kuaishou)
-- **微博** (Weibo)
-- **B站** (Bilibili)
-- **贴吧** (Tieba)
-- **知乎** (Zhihu)
+| 平台 | 支持内容 | 支持评论 |
+|------|---------|---------|
+| 小红书 | ✅ | ✅ |
+| 抖音 | ✅ | ✅ |
+| 快手 | ✅ | ✅ |
+| 微博 | ✅ | ✅ |
+| B站 | ✅ | ✅ |
+| 贴吧 | ✅ | ✅ |
+| 知乎 | ✅ | ✅ |
 
 ### 数据预处理 (SentimentProcessor)
 
-- **文本清洗**
-  - 移除 URL、邮箱、HTML 标签
-  - 移除 @提及 和表情符号
-  - 处理平台特定表情格式 (如 `[笑哭R]`)
-  - 提取话题标签内容
-
-- **文本规范化**
-  - 繁体转简体 (OpenCC)
-  - 网络用语规范化 (如 "yyds" → "永远的神")
-  - 重复字符压缩
-
-- **中文分词**
-  - 基于 jieba 分词
-  - 支持自定义词典
-  - 停用词过滤
-
-- **关键词提取**
-  - TF-IDF 算法
-  - TextRank 算法
+- **文本清洗**: 移除 URL、邮箱、HTML、@提及、表情符号
+- **文本规范化**: 繁简转换、网络用语规范化、重复字符压缩
+- **中文分词**: jieba 分词、自定义词典、停用词过滤
+- **关键词提取**: TF-IDF、TextRank
 
 ### 情感分析 (SentimentModel)
 
-- **BERT 模型**
-  - 基于 chinese-roberta-wwm-ext
-  - 三分类 (正面/中性/负面)
+| 模型 | 说明 | 输出 |
+|------|------|------|
+| BERT | chinese-roberta-wwm-ext | 三分类 (正面/中性/负面) |
+| Qwen2.5 | 1.5B 参数大模型 | 情感分数 + 18种情绪标签 |
 
-- **Qwen2.5 大模型**
-  - 支持 18 种情绪标签
-  - 情感分数 (-1.0 ~ 1.0)
-  - 无需微调即可使用
+**支持的 18 种情绪标签：**
+- 正面：喜悦、兴奋、满足、感激、爱
+- 负面：愤怒、厌恶、悲伤、恐惧、失望
+- 中性：惊讶、困惑、好奇、期待、焦虑、平静、无聊、冷漠
 
-## 环境要求
+## 使用示例
 
-- Python 3.10+
-- MySQL 5.7+
-- CUDA (GPU 推理，可选)
+### 示例 1：完整的舆情分析工作流
+
+```bash
+# Step 1: 采集小红书数据
+cd SentimentSpider/MediaCrawler
+python main.py --platform xhs --keywords "新能源汽车" --type search
+
+# Step 2: 回到根目录，进行数据预处理
+cd ../..
+python -m SentimentProcessor all
+
+# Step 3: 情感分析
+python run_qwen_analyze.py
+
+# Step 4: 查看统计结果
+python -m SentimentProcessor stats
+```
+
+### 示例 2：只分析内容（不分析评论）
+
+```bash
+# 预处理内容
+python -m SentimentProcessor content
+
+# 情感分析内容
+python run_qwen_analyze.py --type content
+```
+
+### 示例 3：试运行模式（不写入数据库）
+
+```bash
+# 预处理试运行
+python -m SentimentProcessor all --dry-run
+
+# 情感分析试运行
+python run_qwen_analyze.py --dry-run
+```
+
+### 示例 4：批量处理大数据
+
+```bash
+# 使用较小的批次大小，避免内存溢出
+python -m SentimentProcessor all -b 50
+python run_qwen_analyze.py --batch-size 20
+```
+
+### 示例 5：Python API 使用
+
+```python
+# 文本预处理
+from SentimentProcessor import TextCleaner, Segmenter, KeywordExtractor
+
+cleaner = TextCleaner()
+segmenter = Segmenter()
+extractor = KeywordExtractor()
+
+text = "这个产品真的太好用了！强烈推荐给大家 #好物分享#"
+
+# 清洗文本
+cleaned = cleaner.clean(text)
+print(f"清洗后: {cleaned}")
+
+# 分词
+words = segmenter.segment(cleaned)
+print(f"分词: {words}")
+
+# 提取关键词
+keywords = extractor.extract_tfidf(cleaned, topk=5)
+print(f"关键词: {keywords}")
+```
+
+```python
+# 情感分析
+from SentimentModel import SentimentPredictor
+
+predictor = SentimentPredictor(model_path="models/best_model")
+result = predictor.predict("这个产品真的太好用了！")
+
+print(f"情感: {result.label}")
+print(f"置信度: {result.confidence:.2%}")
+```
 
 ## 配置说明
 
-项目使用根目录的 `.env` 文件进行统一配置。复制 `.env.example` 并修改：
+### 环境变量
 
-```bash
-cp .env.example .env
-```
+| 变量名 | 必须 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `MYSQL_DB_HOST` | 否 | localhost | 数据库主机 |
+| `MYSQL_DB_PORT` | 否 | 3306 | 数据库端口 |
+| `MYSQL_DB_USER` | 否 | root | 数据库用户 |
+| `MYSQL_DB_PWD` | **是** | - | 数据库密码 |
+| `MYSQL_DB_NAME` | 否 | sentiment | 数据库名 |
+| `HF_ENDPOINT` | 否 | https://hf-mirror.com | HuggingFace 镜像 |
 
-主要配置项：
+### 模型下载
+
+首次运行会自动下载模型，国内用户建议配置 HuggingFace 镜像：
 
 ```env
-# MySQL 数据库 (必须)
-MYSQL_DB_HOST=localhost
-MYSQL_DB_PORT=3306
-MYSQL_DB_USER=root
-MYSQL_DB_PWD=your_password
-MYSQL_DB_NAME=sentiment
-
-# HuggingFace 镜像 (国内用户建议配置)
 HF_ENDPOINT=https://hf-mirror.com
 ```
 
-## 使用方法
-
-### 数据采集
-
-```bash
-cd SentimentSpider/MediaCrawler
-
-# 采集小红书数据
-python main.py --platform xhs --keywords "教育"
-
-# 采集抖音数据
-python main.py --platform douyin --keywords "教育"
-```
-
-### 数据预处理
-
-```bash
-# 查看统计信息
-python -m SentimentProcessor stats
-
-# 处理所有未处理的数据
-python -m SentimentProcessor all
-
-# 只处理内容
-python -m SentimentProcessor content
-
-# 只处理评论
-python -m SentimentProcessor comment
-
-# 试运行 (不保存到数据库)
-python -m SentimentProcessor all --dry-run
-
-# 指定批处理大小
-python -m SentimentProcessor all -b 200
-```
-
-### 情感分析
-
-```bash
-# 使用 Qwen2.5 分析数据库中的数据
-python run_qwen_analyze.py
-
-# 只分析内容
-python run_qwen_analyze.py --type content
-
-# 只分析评论
-python run_qwen_analyze.py --type comment
-
-# 试运行 (不保存)
-python run_qwen_analyze.py --dry-run
-
-# 测试 Qwen2.5 模型
-python test_qwen_base.py
-```
-
-### Python API
-
-```python
-from SentimentProcessor import ContentProcessor, CommentProcessor
-
-# 处理内容
-content_processor = ContentProcessor()
-result = content_processor.run(batch_size=100)
-print(f"处理完成: {result['success']} 成功, {result['error']} 失败")
-
-# 处理评论
-comment_processor = CommentProcessor()
-result = comment_processor.run(batch_size=100)
-
-# 单独使用文本清洗器
-from SentimentProcessor import TextCleaner, Segmenter
-
-cleaner = TextCleaner()
-cleaned = cleaner.clean("这是一条测试文本[笑哭R] #话题#")
-
-segmenter = Segmenter()
-words = segmenter.segment(cleaned)
-```
+模型大小参考：
+- `Qwen2.5-1.5B-Instruct`: ~3GB
+- `chinese-roberta-wwm-ext`: ~400MB
 
 ## 数据库表结构
 
@@ -227,21 +322,44 @@ words = segmenter.segment(cleaned)
 | `xhs_note_comment` | 小红书评论 |
 | `douyin_aweme` | 抖音视频 |
 | `douyin_aweme_comment` | 抖音评论 |
-| ... | 其他平台表 |
 
-### 预处理数据表
+### 预处理字段
 
-| 表名 | 说明 |
+| 字段 | 说明 |
 |------|------|
-| `processed_content` | 预处理后的内容 |
-| `processed_comment` | 预处理后的评论 |
+| `title_cleaned` / `content_cleaned` | 清洗后的文本 |
+| `title_segmented` / `content_segmented` | 分词结果 (JSON) |
+| `keywords` | 关键词 (JSON) |
+| `sentiment` | 情感标签 (positive/neutral/negative) |
+| `sentiment_score` | 情感分数 (-1.0 ~ 1.0) |
+| `emotion_tags` | 情绪标签 (JSON) |
 
-预处理表包含以下字段：
-- `original_*` - 原始内容
-- `*_cleaned` - 清洗后的内容
-- `*_segmented` - 分词结果 (JSON)
-- `keywords` - 关键词 (JSON)
-- `char_count` / `word_count` - 统计信息
+## 常见问题
+
+### Q: 模型下载太慢？
+
+配置 HuggingFace 镜像：
+```bash
+export HF_ENDPOINT=https://hf-mirror.com
+```
+或在 `.env` 文件中设置。
+
+### Q: GPU 内存不足？
+
+1. 使用更小的批次大小：`--batch-size 10`
+2. 使用 CPU 推理：在 `.env` 中设置 `DEVICE=cpu`
+3. 使用更小的模型：`Qwen2.5-0.5B-Instruct`
+
+### Q: 数据库连接失败？
+
+1. 检查 MySQL 服务是否启动
+2. 检查 `.env` 中的密码是否正确
+3. 检查数据库是否已创建
+
+### Q: 爬虫无法运行？
+
+1. 确保已安装 Playwright：`playwright install chromium`
+2. 某些平台需要登录 Cookie，请查看 MediaCrawler 文档
 
 ## 项目规划
 
@@ -254,7 +372,7 @@ words = segmenter.segment(cleaned)
 
 ## 作者
 
-**Zayy2005x** - [GitHub](https://github.com/Zayy2005x)
+**Zayu2005** - [GitHub](https://github.com/Zayu2005)
 
 ## 许可证
 
