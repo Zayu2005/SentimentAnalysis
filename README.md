@@ -1,47 +1,46 @@
 # SentimentAnalysis
 
-中文社交媒体舆情分析系统，支持多平台数据采集、文本预处理和情感分析。
+中文社交媒体舆情分析系统，支持多平台数据采集、文本预处理、情感分析和话题聚类。
 
 ## 系统架构
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          SentimentAnalysis 舆情分析系统                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌───────────────┐    ┌───────────────┐    ┌───────────────┐              │
-│  │ SentimentSpider│    │SentimentProcessor│   │ SentimentModel│              │
-│  │   数据采集     │ ──▶│   数据预处理    │ ──▶│   情感分析    │              │
-│  └───────────────┘    └───────────────┘    └───────────────┘              │
-│         │                    │                    │                        │
-│         ▼                    ▼                    ▼                        │
-│  ┌─────────────────────────────────────────────────────────┐              │
-│  │                      MySQL 数据库                        │              │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐    │              │
-│  │  │原始数据  │  │统一数据  │  │预处理数据│  │情感结果  │    │              │
-│  │  │xhs_note │  │unified_ │  │*_cleaned│  │sentiment│    │              │
-│  │  │douyin_  │  │content  │  │*_segment│  │*_score  │    │              │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘    │              │
-│  └─────────────────────────────────────────────────────────┘              │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                          SentimentAnalysis 舆情分析系统                            │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                  │
+│  ┌───────────────┐  ┌────────────────┐  ┌───────────────┐  ┌──────────────┐    │
+│  │ SentimentSpider│  │SentimentProcessor│ │ SentimentModel│  │ TopicCluster │    │
+│  │   数据采集     │─▶│   数据预处理    │─▶│   情感分析    │─▶│  话题聚类    │    │
+│  └───────────────┘  └────────────────┘  └───────────────┘  └──────────────┘    │
+│         │                  │                    │                  │             │
+│         ▼                  ▼                    ▼                  ▼             │
+│  ┌──────────────────────────────────────────────────────────────────────┐       │
+│  │                           MySQL 数据库                                │       │
+│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐            │       │
+│  │  │原始数据 │ │统一数据 │ │预处理  │ │情感结果 │ │话题事件 │            │       │
+│  │  │xhs_note│ │unified_│ │cleaned │ │sentiment│ │topic_  │            │       │
+│  │  │douyin_ │ │content │ │segment │ │score   │ │event   │            │       │
+│  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘            │       │
+│  └──────────────────────────────────────────────────────────────────────┘       │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 数据处理流程
 
 ```
-┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│ 社交媒体  │     │  数据采集 │     │ 数据清洗  │     │ 情感分析  │     │  结果存储 │
-│  平台    │ ──▶ │  Spider  │ ──▶ │Processor │ ──▶ │  Model   │ ──▶ │ Database │
-└──────────┘     └──────────┘     └──────────┘     └──────────┘     └──────────┘
-     │                │                │                │                │
-     │                │                │                │                │
-     ▼                ▼                ▼                ▼                ▼
-  小红书           爬取内容         文本清洗        Qwen2.5/BERT      情感标签
-  抖音             爬取评论         中文分词        情感分类          情感分数
-  微博             数据同步         关键词提取      情绪识别          情绪标签
-  B站              统一格式         停用词过滤      18种情绪          统计分析
-  知乎               ...              ...            ...              ...
+┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ 社交媒体  │   │  数据采集 │   │ 数据清洗  │   │ 情感分析  │   │ 话题聚类  │   │  结果存储 │
+│  平台    │──▶│  Spider  │──▶│Processor │──▶│  Model   │──▶│  Cluster │──▶│ Database │
+└──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
+     │              │              │              │              │              │
+     ▼              ▼              ▼              ▼              ▼              ▼
+   小红书        爬取内容       文本清洗      Qwen2.5/BERT   BERT嵌入       话题事件
+   抖音          爬取评论       中文分词      情感分类       Single-Pass    演化快照
+   微博          数据同步       关键词提取    情绪识别       Faiss检索      合并日志
+   B站           统一格式       停用词过滤    18种情绪       Qwen命名       统计分析
+   知乎            ...            ...          ...           话题合并         ...
 ```
 
 ## 快速开始
@@ -117,6 +116,11 @@ MYSQL_DB_PWD=your_password_here
 CREATE DATABASE sentiment DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
+```bash
+# 执行话题聚类表迁移
+mysql -u root -p sentiment < SentimentSpider/hot_news/database/migrations/003_topic_cluster.sql
+```
+
 ### 6. 验证安装
 
 ```bash
@@ -157,6 +161,18 @@ SentimentAnalysis/
 │   ├── inference/            # 模型推理
 │   ├── qwen/                 # Qwen2.5 大模型
 │   ├── database/             # 数据库操作
+│   └── cli/                  # 命令行工具
+│
+├── TopicCluster/             # 话题聚类模块
+│   ├── config/               # 配置管理
+│   ├── database/             # 数据库操作
+│   ├── cluster/              # 聚类核心
+│   │   ├── embedder.py       # BERT 嵌入提取
+│   │   ├── index.py          # Faiss 向量索引
+│   │   ├── engine.py         # 增量聚类引擎
+│   │   └── maintainer.py     # 话题合并/生命周期/统计
+│   ├── llm/                  # LLM 话题命名
+│   │   └── namer.py          # Qwen 话题描述生成
 │   └── cli/                  # 命令行工具
 │
 ├── .env.example              # 环境变量模板
@@ -201,6 +217,26 @@ SentimentAnalysis/
 - 负面：愤怒、厌恶、悲伤、恐惧、失望
 - 中性：惊讶、困惑、好奇、期待、焦虑、平静、无聊、冷漠
 
+### 话题聚类 (TopicCluster)
+
+基于 HISEvent + RagSEDE 思路的增量话题聚类系统：
+
+- **BERT 嵌入**: 使用 `chinese-roberta-wwm-ext` 提取 768 维 [CLS] 向量，L2 归一化
+- **Single-Pass 聚类**: Faiss IndexFlatIP 检索最近话题质心，阈值匹配归入或新建话题
+- **话题合并**: 全局话题对相似度检查，自动合并高相似话题
+- **生命周期管理**: emerging → active → declining → ended 状态自动流转
+- **LLM 命名**: Qwen2.5 自动生成话题名称、舆情描述和加权关键词
+- **演化追踪**: 每日快照记录话题热度、情感趋势、平台分布变化
+
+| 命令 | 功能 |
+|------|------|
+| `python -m TopicCluster cluster` | 增量聚类 |
+| `python -m TopicCluster describe` | LLM 话题命名 |
+| `python -m TopicCluster merge` | 合并相似话题 |
+| `python -m TopicCluster evolve` | 更新生命周期/统计/演化快照 |
+| `python -m TopicCluster stats` | 查看统计信息 |
+| `python -m TopicCluster recluster` | 全量重聚类 |
+
 ## 使用示例
 
 ### 示例 1：完整的舆情分析工作流
@@ -217,8 +253,19 @@ python -m SentimentProcessor all
 # Step 3: 情感分析
 python run_qwen_analyze.py
 
-# Step 4: 查看统计结果
+# Step 4: 话题聚类
+python -m TopicCluster cluster --batch-size 64
+
+# Step 5: LLM 话题命名
+python -m TopicCluster describe --all --include-ended
+
+# Step 6: 话题合并 + 统计更新
+python -m TopicCluster merge
+python -m TopicCluster evolve
+
+# Step 7: 查看统计结果
 python -m SentimentProcessor stats
+python -m TopicCluster stats
 ```
 
 ### 示例 2：只分析内容（不分析评论）
@@ -334,6 +381,14 @@ HF_ENDPOINT=https://hf-mirror.com
 | `sentiment_score` | 情感分数 (-1.0 ~ 1.0) |
 | `emotion_tags` | 情绪标签 (JSON) |
 
+### 话题聚类表
+
+| 表名 | 说明 |
+|------|------|
+| `topic_event` | 话题事件 (质心嵌入、名称、状态、情感/热度统计) |
+| `topic_evolution` | 话题演化快照 (每日热度、情感、平台分布) |
+| `topic_merge_log` | 话题合并日志 (合并记录、相似度、关键词) |
+
 ## 常见问题
 
 ### Q: 模型下载太慢？
@@ -366,7 +421,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 - [x] 数据采集模块 (SentimentSpider)
 - [x] 数据预处理模块 (SentimentProcessor)
 - [x] 情感分析模型 (SentimentModel)
-- [ ] 话题聚类与事件监测
+- [x] 话题聚类与事件监测 (TopicCluster)
 - [ ] API 服务 (SentimentAPI)
 - [ ] 可视化仪表板 (SentimentDashboard)
 

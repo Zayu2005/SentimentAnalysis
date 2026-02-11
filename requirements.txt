@@ -15,6 +15,9 @@ numpy>=1.23.0
 scikit-learn>=1.2.0
 datasets>=2.10.0
 
+# ===== 向量检索 (TopicCluster) =====
+faiss-cpu>=1.7.0
+
 # ===== 数据库 =====
 pymysql>=1.0.0
 aiomysql>=0.2.0
