@@ -1,46 +1,432 @@
 # SentimentAnalysis
 
-中文社交媒体舆情分析系统，支持多平台数据采集、文本预处理、情感分析和话题聚类。
+中文社交媒体舆情分析系统，覆盖从数据采集到知识图谱构建的全流水线。
 
 ## 系统架构
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                          SentimentAnalysis 舆情分析系统                            │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│  ┌───────────────┐  ┌────────────────┐  ┌───────────────┐  ┌──────────────┐    │
-│  │ SentimentSpider│  │SentimentProcessor│ │ SentimentModel│  │ TopicCluster │    │
-│  │   数据采集     │─▶│   数据预处理    │─▶│   情感分析    │─▶│  话题聚类    │    │
-│  └───────────────┘  └────────────────┘  └───────────────┘  └──────────────┘    │
-│         │                  │                    │                  │             │
-│         ▼                  ▼                    ▼                  ▼             │
-│  ┌──────────────────────────────────────────────────────────────────────┐       │
-│  │                           MySQL 数据库                                │       │
-│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐            │       │
-│  │  │原始数据 │ │统一数据 │ │预处理  │ │情感结果 │ │话题事件 │            │       │
-│  │  │xhs_note│ │unified_│ │cleaned │ │sentiment│ │topic_  │            │       │
-│  │  │douyin_ │ │content │ │segment │ │score   │ │event   │            │       │
-│  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘            │       │
-│  └──────────────────────────────────────────────────────────────────────┘       │
-│                                                                                  │
-└──────────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                          SentimentAnalysis 舆情分析系统                              │
+├───────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                   │
+│  ┌──────────────┐ ┌───────────────┐ ┌──────────────┐ ┌─────────────┐             │
+│  │SentimentSpider│ │SentimentProces│ │SentimentModel│ │ TopicCluster│             │
+│  │  数据采集     │▶│  数据预处理    │▶│  情感分析    │▶│  话题聚类   │             │
+│  └──────────────┘ └───────────────┘ └──────────────┘ └──────┬──────┘             │
+│                                                              │                    │
+│                                                              ▼                    │
+│                                            ┌────────────────────────────┐         │
+│                                            │      KnowledgeGraph       │         │
+│                                            │  实体关系抽取 + 知识图谱    │         │
+│                                            │    (OneKE + Neo4j)         │         │
+│                                            └────────────────────────────┘         │
+│                                                                                   │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐  │
+│  │                              存储层                                          │  │
+│  │   MySQL (原始/统一/预处理/情感/话题/抽取)    Neo4j (实体-关系图谱)            │  │
+│  └─────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 数据处理流程
 
 ```
-┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-│ 社交媒体  │   │  数据采集 │   │ 数据清洗  │   │ 情感分析  │   │ 话题聚类  │   │  结果存储 │
-│  平台    │──▶│  Spider  │──▶│Processor │──▶│  Model   │──▶│  Cluster │──▶│ Database │
-└──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
-     │              │              │              │              │              │
-     ▼              ▼              ▼              ▼              ▼              ▼
-   小红书        爬取内容       文本清洗      Qwen2.5/BERT   BERT嵌入       话题事件
-   抖音          爬取评论       中文分词      情感分类       Single-Pass    演化快照
-   微博          数据同步       关键词提取    情绪识别       Faiss检索      合并日志
-   B站           统一格式       停用词过滤    18种情绪       Qwen命名       统计分析
-   知乎            ...            ...          ...           话题合并         ...
+社交媒体平台 (小红书/抖音/微博/B站/知乎/快手/贴吧)
+    │
+    ▼
+[SentimentSpider] 数据采集 ─── Playwright 自动化 + 平台 API 逆向
+    │
+    ▼
+[SentimentProcessor] 数据预处理 ─── 正则清洗 → OpenCC 繁简转换 → jieba 分词 → TF-IDF/TextRank 提关键词
+    │
+    ▼
+[SentimentModel] 情感分析 ─── BERT (RoBERTa-wwm-ext) 三分类 / Qwen2.5 LoRA 微调 (18 情绪)
+    │
+    ▼
+[TopicCluster] 话题聚类 ─── BERT [CLS] 嵌入 → Faiss Single-Pass 聚类 → 话题合并/演化
+    │
+    ▼
+[KnowledgeGraph] 知识图谱 ─── OneKE 三 Agent 抽取 → 实体聚合去重 → Neo4j MERGE 写入
+```
+
+---
+
+## 各模块算法详解
+
+### 1. SentimentProcessor — 数据预处理
+
+#### 1.1 文本清洗 (TextCleaner)
+
+多层正则表达式流水线，按序执行：
+
+| 步骤 | 算法 | 说明 |
+|------|------|------|
+| HTML 清除 | `re.sub(r'<[^>]+>', '')` | 去除残留标签 |
+| URL 移除 | 正则匹配 `https?://` 和 `www.` 链接 | 消除噪声 |
+| @提及移除 | `@[\w\u4e00-\u9fff]+` | 去除用户提及 |
+| 话题标签 | `#([^#\s]+)#?` → 保留话题文字，移除 `#` 和 `[话题]` 后缀 | 保留语义 |
+| Emoji 移除 | Unicode 范围 `U+1F600-U+1FAFF` + 平台表情 `[笑哭R]` | 去除表情 |
+| 繁简转换 | **OpenCC** `t2s` 模式 | 繁体→简体 |
+| 网络用语 | 自定义映射表 `SlangNormalizer` | 如 "yyds"→"永远的神" |
+| 空白规范 | `\s+` → 单空格 | 统一格式 |
+
+#### 1.2 中文分词 (Segmenter)
+
+基于 **jieba** 分词引擎：
+
+- **默认精确模式**: `jieba.cut(text)` — 基于前缀词典 + 动态规划 (DAG) 求解最大概率路径，对未登录词使用 HMM (隐马尔可夫模型) 进行识别
+- **搜索引擎模式**: `jieba.cut_for_search(text)` — 在精确模式基础上对长词再次切分，提高召回率
+- **停用词过滤**: 加载停用词表，过滤高频无意义词
+
+> jieba 分词算法参考: 基于前缀词典的有向无环图 (DAG) + Viterbi 算法 (HMM)
+
+#### 1.3 关键词提取 (KeywordExtractor)
+
+支持两种算法：
+
+| 算法 | 原理 | 适用场景 |
+|------|------|---------|
+| **TF-IDF** | 词频 (TF) × 逆文档频率 (IDF)，使用 jieba 内置 IDF 语料库 | 通用关键词提取 |
+| **TextRank** | 基于 PageRank 的无监督排序算法，构建词共现图计算节点重要度 | 强调上下文语义 |
+
+> TextRank 算法来源: Mihalcea R, Tarau P. **TextRank: Bringing Order into Texts**. EMNLP 2004.
+
+---
+
+### 2. SentimentModel — 情感分析
+
+#### 2.1 BERT 情感分类器
+
+**模型架构**: `chinese-roberta-wwm-ext` + Dropout + Linear 分类头
+
+```
+Input → BERT Encoder → [CLS] Token (768-dim) → Dropout(0.1) → Linear(768→3) → Softmax → 三分类
+```
+
+| 组件 | 说明 |
+|------|------|
+| 预训练模型 | **RoBERTa-wwm-ext** (哈工大讯飞联合实验室)，全词遮蔽 (Whole Word Masking) 预训练 |
+| 分类头初始化 | Xavier Uniform 初始化权重，零初始化偏置 |
+| 损失函数 | CrossEntropyLoss |
+| 情感分数 | `score = P(positive) - P(negative)`，范围 [-1, 1] |
+| 训练优化器 | AdamW + Linear Warmup 学习率调度 |
+| 混合精度 | PyTorch AMP `autocast` + `GradScaler` |
+| 评估指标 | Accuracy, Macro-F1, Weighted-F1, Per-class P/R/F1, Confusion Matrix |
+
+> 预训练模型来源: Cui Y, Che W, Liu T, et al. **Pre-Training with Whole Word Masking for Chinese BERT**. IEEE/ACM Transactions on Audio, Speech, and Language Processing, 2021.
+
+#### 2.2 Qwen2.5 情感分析器
+
+**模型架构**: `Qwen2.5-1.5B-Instruct` + LoRA 微调
+
+| 组件 | 说明 |
+|------|------|
+| 基座模型 | **Qwen2.5-1.5B-Instruct** (通义千问，阿里云) |
+| 微调方法 | **LoRA** (Low-Rank Adaptation)，通过 `peft` 库加载适配器 |
+| 量化支持 | 可选 4-bit NF4 量化 (`BitsAndBytesConfig`) |
+| 输入格式 | Chat Template: System Prompt + User Prompt → JSON 输出 |
+| 输出 | `sentiment` (三分类) + `sentiment_score` (-1~1) + `emotion_tags` (18 种情绪) |
+| 解码策略 | `temperature=0.1`, `max_new_tokens=256` |
+| 后处理 | 正则提取 JSON + 字段验证 + 标签过滤 |
+
+**18 种情绪标签** (参考 GoEmotions 针对中文场景优化):
+
+| 类别 | 情绪 |
+|------|------|
+| 正面 | 喜悦、兴奋、满足、感激、爱 |
+| 负面 | 愤怒、厌恶、悲伤、恐惧、失望 |
+| 复杂 | 惊讶、困惑、好奇、期待、焦虑 |
+| 中性 | 平静、无聊、冷漠 |
+
+> LoRA 来源: Hu E J, Shen Y, Wallis P, et al. **LoRA: Low-Rank Adaptation of Large Language Models**. ICLR 2022.
+>
+> GoEmotions 来源: Demszky D, Movshovitz-Attias D, Ko J, et al. **GoEmotions: A Dataset of Fine-Grained Emotions**. ACL 2020.
+
+---
+
+### 3. TopicCluster — 话题聚类
+
+#### 3.1 文本嵌入 (BertEmbedder)
+
+使用 `chinese-roberta-wwm-ext` 提取 768 维 [CLS] 向量：
+
+```
+Input Text → BERT Tokenizer → BERT Encoder → last_hidden_state[:, 0, :] → L2 Normalize → 768-dim Vector
+```
+
+- **L2 归一化**: `v = v / ||v||₂`，使得内积 (Inner Product) 等价于余弦相似度
+- **批处理**: 按 batch_size 分批，`padding=True, truncation=True, max_length=128`
+
+#### 3.2 向量索引 (FaissIndex)
+
+基于 **Faiss** (`IndexFlatIP`) 的精确内积检索：
+
+| 操作 | 复杂度 | 说明 |
+|------|--------|------|
+| `search(query, k)` | O(n) | 暴力扫描所有质心，返回 Top-k |
+| `add_topic(id, centroid)` | O(n) | 添加并重建索引 |
+| `get_all_pairs_similarity()` | O(n²) | 矩阵乘法计算所有话题对相似度 |
+
+> Faiss 来源: Johnson J, Douze M, Jégou H. **Billion-scale similarity search with GPUs**. IEEE Transactions on Big Data, 2021. (Meta AI Research)
+
+#### 3.3 Single-Pass 增量聚类 (ClusterEngine)
+
+核心算法流程：
+
+```
+对于每条新内容:
+  1. 计算 BERT 嵌入向量 e
+  2. 在 Faiss 索引中搜索最近的话题质心: (topic_id, similarity) = search(e, k=1)
+  3. 如果 similarity ≥ threshold (默认 0.84):
+       → 归入现有话题
+       → 增量更新质心 (Running Average):
+         c_new = (c_old × n + e) / (n + 1)
+         c_new = c_new / ||c_new||₂    (L2 归一化)
+  4. 否则:
+       → 创建新话题，以当前嵌入作为初始质心
+```
+
+**特点**:
+- 在线增量处理，无需预设簇数 k
+- 质心滑动平均更新，避免全量重算
+- 阈值动态控制聚类粒度
+
+> Single-Pass 聚类思路参考:
+> - Cao Y, Ngo C, Zhang J, et al. **HISEvent: A Large-Scale High Inter-Intra Similarity Benchmark for Social Media Event Detection**. AAAI 2024.
+> - 本系统在 HISEvent 的嵌入+检索框架基础上简化为 Single-Pass 模式，以适应流式增量场景。
+
+#### 3.4 话题合并 (TopicMaintainer.merge_topics)
+
+全局相似度扫描合并：
+
+```
+1. 加载所有活跃话题质心到 Faiss
+2. 计算所有话题对的余弦相似度矩阵: S = V × Vᵀ
+3. 按相似度降序遍历话题对:
+   如果 similarity ≥ merge_threshold (默认 0.92):
+     → 小话题合并到大话题 (content_count 多者为主)
+     → 重新分配内容归属
+     → 源话题标记为 merged 状态
+```
+
+#### 3.5 话题生命周期管理
+
+状态机模型：
+
+```
+emerging ──[content_count ≥ 10]──▶ active
+   │                                  │
+   ├──[inactive_days ≥ 3]──▶ declining ──[inactive_days ≥ 7]──▶ ended
+   │
+   └──[合并]──▶ merged
+```
+
+#### 3.6 热度评估
+
+```
+热度分数: hot_score = content_delta × 10 + interaction × 0.01
+热度等级:
+  score ≥ 500 → critical
+  score ≥ 100 → high
+  score ≥ 20  → medium
+  score < 20  → low
+```
+
+#### 3.7 LLM 话题命名 (TopicNamer)
+
+使用 `Qwen2.5-1.5B-Instruct` 为话题生成结构化描述：
+
+- **输入**: 话题下 Top-10 代表性内容 (含平台、情感标签、标题、正文截取)
+- **输出**: JSON `{event_name, event_description, keywords[{word, weight}]}`
+- **Prompt 策略**: 要求"主体+事件+影响"结构命名，描述需涵盖事件背景、涉及主体、公众态度、潜在风险
+
+---
+
+### 4. KnowledgeGraph — 知识图谱构建
+
+#### 4.1 实体关系 Schema
+
+预定义 7 类实体和 8 类关系，针对中文社交媒体舆情场景：
+
+| 实体类型 | 说明 | 示例 |
+|----------|------|------|
+| 人物 | 自然人 | 雷军、马斯克 |
+| 组织机构 | 企业、政府机构 | 小米集团、消防局 |
+| 品牌 | 产品品牌 | 小米、特斯拉 |
+| 产品 | 具体产品 | SU7、iPhone 16 |
+| 地点 | 地理位置 | 营口、北京 |
+| 事件 | 具体事件 | 起火事故、发布会 |
+| 平台 | 社交媒体平台 | 微博、小红书 |
+
+| 关系类型 | 说明 |
+|----------|------|
+| 涉及 | 人物/组织参与事件 |
+| 生产 | 品牌生产产品 |
+| 位于 | 事件/组织关联地点 |
+| 共同提及 | 同一上下文共现 |
+| 导致 | 事件间因果关系 |
+| 回应 | 对事件做出回应 |
+| 属于 | 从属关系 |
+| 竞争 | 品牌/产品间竞争 |
+
+#### 4.2 OneKE 三 Agent 抽取流水线
+
+使用 **OneKE** 框架 (WWW 2025) + DeepSeek API 进行实体关系抽取：
+
+```
+Input Text
+    │
+    ▼
+┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│ Schema Agent │ ──▶ │ Extraction Agent  │ ──▶ │ Reflection Agent │
+│  模式推演    │     │   信息抽取         │     │   质量反思        │
+└─────────────┘     └──────────────────┘     └──────────────────┘
+```
+
+**Schema Agent (模式推演)**:
+- 根据任务类型 (NER/RE/EE/Triple) 和约束条件选择合适的 Schema
+- Triple 任务使用 `get_retrieved_schema` 从 Schema Repository 检索匹配模式
+- 输出: 实体类型列表 + 关系类型列表
+
+**Extraction Agent (信息抽取)**:
+- 将输入文本按 NLTK 句子分割为 chunks
+- 对每个 chunk 构建 Constraint Prompt，包含 Schema 定义 + 抽取规则
+- 调用 LLM 抽取三元组: `(head, head_type, relation, relation_type, tail, tail_type)`
+- `summarize_answer`: 聚合多 chunk 结果并去重
+
+**Reflection Agent (质量反思)** (standard 模式):
+- **Self-Consistency (自一致性检验)**: 以 3 种温度 (T=0.2, 0.5, 1.0) 重复抽取，投票选出一致性最高的结果
+- **Case-Based Reflection (案例反思)**: 从 Case Repository 检索相似历史案例，利用 bad_case 进行错误纠正
+- **Case Repository**: 混合相似度检索 (50% Embedding 余弦相似度 + 50% RapidFuzz 字符串匹配)，返回 Top-2 案例
+
+> OneKE 来源: **OneKE: A Dockerized Schema-Guided LLM Agent-based Knowledge Extraction System**. The Web Conference (WWW) 2025.
+
+#### 4.3 实体聚合去重
+
+从 MySQL `kg_extraction` 表读取话题下所有抽取结果，进行跨文档聚合：
+
+```
+实体去重:
+  key = (name.strip().lower(), entity_type)
+  相同 key 的实体合并，mention_count 累加，properties 合并
+
+关系聚合:
+  key = (head.lower(), tail.lower(), relation)
+  相同 key 的关系合并:
+    confidence = avg(所有来源的 confidence)
+    source_count = 累加计数
+```
+
+#### 4.4 Neo4j 图模型与写入
+
+```
+(:TopicEvent {topic_id, name, description})
+(:Entity {name, entity_type, mention_count, properties})
+
+(:Entity)-[:BELONGS_TO_TOPIC]->(:TopicEvent)
+(:Entity)-[:RELATES_TO {relation_type, confidence, source_count, topic_id}]->(:Entity)
+```
+
+写入使用 **MERGE 语义** (幂等)，支持重复执行不产生重复数据。
+
+---
+
+### 5. SentimentSpider — 数据采集
+
+#### 5.1 MediaCrawler 多平台爬虫
+
+| 平台 | 支持内容 | 支持评论 | 技术方案 |
+|------|---------|---------|---------|
+| 小红书 | ✅ | ✅ | Playwright + 签名算法 |
+| 抖音 | ✅ | ✅ | Playwright + API |
+| 快手 | ✅ | ✅ | GraphQL API |
+| 微博 | ✅ | ✅ | Cookie 登录 + API |
+| B站 | ✅ | ✅ | HTTP API |
+| 贴吧 | ✅ | ✅ | HTTP API |
+| 知乎 | ✅ | ✅ | HTTP API |
+
+#### 5.2 热点新闻模块
+
+- 聚合百度、微博、知乎、B站、抖音等 10+ 平台热榜
+- LLM 领域匹配: 判断热点是否属于监测领域
+- 自动提取搜索关键词，触发定向爬取
+
+---
+
+## 项目结构
+
+```
+SentimentAnalysis/
+├── SentimentSpider/              # 数据采集模块
+│   ├── MediaCrawler/             # 多平台社交媒体爬虫
+│   │   ├── media_platform/       # 各平台爬虫实现 (xhs/douyin/weibo/bilibili/kuaishou/tieba/zhihu)
+│   │   ├── store/                # 数据存储适配器
+│   │   ├── proxy/                # 代理 IP 池管理
+│   │   ├── cache/                # Redis/本地缓存
+│   │   └── api/                  # FastAPI 管理接口
+│   └── hot_news/                 # 热点新闻采集
+│       ├── analyzer/             # LLM 领域匹配 + 关键词提取
+│       ├── fetcher/              # 热榜抓取客户端
+│       ├── sync/                 # 统一数据同步
+│       └── database/migrations/  # SQL 迁移脚本 (001-005)
+│
+├── SentimentProcessor/           # 数据预处理模块
+│   ├── processor/
+│   │   ├── cleaner.py            # 文本清洗 (正则 + OpenCC)
+│   │   ├── segmenter.py          # jieba 中文分词
+│   │   └── extractor.py          # TF-IDF / TextRank 关键词提取
+│   └── utils/
+│       ├── stopwords.py          # 停用词管理
+│       └── slang.py              # 网络用语规范化
+│
+├── SentimentModel/               # 情感分析模块
+│   ├── models/
+│   │   └── bert_classifier.py    # BERT (RoBERTa-wwm-ext) 三分类器
+│   ├── qwen/
+│   │   ├── predictor.py          # Qwen2.5 LoRA 推理器
+│   │   ├── finetune.py           # LoRA 微调脚本
+│   │   ├── trainer.py            # 训练循环
+│   │   └── data_prepare.py       # 指令微调数据准备
+│   ├── training/
+│   │   ├── trainer.py            # BERT 训练器 (AdamW + AMP)
+│   │   └── metrics.py            # Accuracy/F1/Confusion Matrix
+│   └── inference/
+│       └── predictor.py          # BERT 推理器
+│
+├── TopicCluster/                 # 话题聚类模块
+│   ├── cluster/
+│   │   ├── embedder.py           # BERT [CLS] 嵌入提取
+│   │   ├── index.py              # Faiss IndexFlatIP 向量索引
+│   │   ├── engine.py             # Single-Pass 增量聚类引擎
+│   │   └── maintainer.py         # 话题合并 / 生命周期 / 演化快照
+│   └── llm/
+│       └── namer.py              # Qwen2.5 话题命名/描述生成
+│
+├── KnowledgeGraph/               # 知识图谱模块
+│   ├── extraction/
+│   │   ├── schema.py             # 7 实体类型 + 8 关系类型定义
+│   │   └── extractor.py          # OneKE Pipeline 实体关系抽取
+│   ├── graph/
+│   │   └── builder.py            # 实体聚合去重 + Neo4j MERGE 写入
+│   └── database/
+│       ├── mysql_connection.py   # MySQL 操作
+│       ├── neo4j_connection.py   # Neo4j 驱动 + session 管理
+│       └── repository.py         # kg_extraction / kg_build_log 仓库
+│
+├── OneKE/                        # OneKE 信息抽取框架 (WWW 2025)
+│   └── src/
+│       ├── pipeline.py           # Schema → Extraction → Reflection 三 Agent 流水线
+│       ├── modules/
+│       │   ├── schema_agent.py   # Schema 推演 Agent
+│       │   ├── extraction_agent.py # 信息抽取 Agent
+│       │   └── reflection_agent.py # 自一致性反思 Agent
+│       └── utils/
+│           └── process.py        # JSON 解析与后处理
+│
+├── .env.example                  # 环境变量模板
+├── requirements.txt              # 统一依赖
+└── README.md
 ```
 
 ## 快速开始
@@ -54,200 +440,91 @@ cd SentimentAnalysis
 
 ### 2. 创建虚拟环境
 
-**方式一：使用 Conda (推荐)**
 ```bash
+# Conda (推荐)
 conda create -n sentiment python=3.10
 conda activate sentiment
-```
 
-**方式二：使用 venv**
-```bash
+# 或 venv
 python -m venv venv
-# Windows
-venv\Scripts\activate
-# Linux/Mac
-source venv/bin/activate
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
 ```
 
 ### 3. 安装依赖
 
 ```bash
-# 安装所有依赖 (CPU 版本)
+# 安装所有依赖 (CPU)
 pip install -r requirements.txt
 
 # 安装 Playwright 浏览器 (爬虫需要)
 playwright install chromium
 ```
 
-**GPU 环境配置 (可选，用于加速模型推理)**
-
+**GPU 环境 (可选)**:
 ```bash
-# 先安装 CUDA 版本的 PyTorch (根据你的 CUDA 版本选择)
 # CUDA 11.8
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
 # CUDA 12.1
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-# 然后安装其他依赖
 pip install -r requirements.txt
 ```
 
 ### 4. 配置环境变量
 
 ```bash
-# 复制配置模板
 cp .env.example .env
-
-# 编辑 .env 文件，设置数据库密码
-# Windows 用户可以用记事本打开
-notepad .env
+# 编辑 .env，设置必要配置
 ```
 
 必须配置的项：
 ```env
+# MySQL
 MYSQL_DB_PWD=your_password_here
+
+# Neo4j (KnowledgeGraph 模块)
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_neo4j_password_here
+
+# DeepSeek API (KnowledgeGraph 模块)
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
 ```
 
 ### 5. 初始化数据库
 
 ```sql
--- 创建数据库
 CREATE DATABASE sentiment DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 ```bash
-# 执行话题聚类表迁移
+# 依次执行迁移脚本
+mysql -u root -p sentiment < SentimentSpider/hot_news/database/migrations/001_initial.sql
+mysql -u root -p sentiment < SentimentSpider/hot_news/database/migrations/002_unified_tables.sql
 mysql -u root -p sentiment < SentimentSpider/hot_news/database/migrations/003_topic_cluster.sql
+mysql -u root -p sentiment < SentimentSpider/hot_news/database/migrations/004_wordcloud.sql
+mysql -u root -p sentiment < SentimentSpider/hot_news/database/migrations/005_knowledge_graph.sql
 ```
 
 ### 6. 验证安装
 
 ```bash
-# 测试数据库连接
 python -m SentimentProcessor stats
-
-# 测试模型加载 (首次运行会下载模型)
 python test_qwen_base.py
 ```
 
-## 项目结构
-
-```
-SentimentAnalysis/
-├── SentimentSpider/          # 数据采集模块
-│   ├── MediaCrawler/         # 多平台社交媒体爬虫
-│   │   ├── media_platform/   # 各平台爬虫实现
-│   │   ├── store/            # 数据存储
-│   │   └── ...
-│   └── hot_news/             # 热点新闻采集
-│
-├── SentimentProcessor/       # 数据预处理模块
-│   ├── config/               # 配置管理
-│   ├── database/             # 数据库操作
-│   ├── processor/            # 预处理核心
-│   │   ├── cleaner.py        # 文本清洗
-│   │   ├── segmenter.py      # 中文分词
-│   │   └── extractor.py      # 关键词提取
-│   ├── utils/                # 工具类
-│   │   ├── stopwords.py      # 停用词管理
-│   │   └── slang.py          # 网络用语规范化
-│   └── cli/                  # 命令行工具
-│
-├── SentimentModel/           # 情感分析模型
-│   ├── config/               # 配置管理
-│   ├── models/               # BERT 模型
-│   ├── training/             # 模型训练
-│   ├── inference/            # 模型推理
-│   ├── qwen/                 # Qwen2.5 大模型
-│   ├── database/             # 数据库操作
-│   └── cli/                  # 命令行工具
-│
-├── TopicCluster/             # 话题聚类模块
-│   ├── config/               # 配置管理
-│   ├── database/             # 数据库操作
-│   ├── cluster/              # 聚类核心
-│   │   ├── embedder.py       # BERT 嵌入提取
-│   │   ├── index.py          # Faiss 向量索引
-│   │   ├── engine.py         # 增量聚类引擎
-│   │   └── maintainer.py     # 话题合并/生命周期/统计
-│   ├── llm/                  # LLM 话题命名
-│   │   └── namer.py          # Qwen 话题描述生成
-│   └── cli/                  # 命令行工具
-│
-├── .env.example              # 环境变量模板
-├── requirements.txt          # 统一依赖文件
-├── run_qwen_analyze.py       # Qwen 分析脚本
-├── test_qwen_base.py         # 模型测试脚本
-└── README.md
-```
-
-## 功能特性
-
-### 数据采集 (SentimentSpider)
-
-支持多个主流社交媒体平台的数据采集：
-
-| 平台 | 支持内容 | 支持评论 |
-|------|---------|---------|
-| 小红书 | ✅ | ✅ |
-| 抖音 | ✅ | ✅ |
-| 快手 | ✅ | ✅ |
-| 微博 | ✅ | ✅ |
-| B站 | ✅ | ✅ |
-| 贴吧 | ✅ | ✅ |
-| 知乎 | ✅ | ✅ |
-
-### 数据预处理 (SentimentProcessor)
-
-- **文本清洗**: 移除 URL、邮箱、HTML、@提及、表情符号
-- **文本规范化**: 繁简转换、网络用语规范化、重复字符压缩
-- **中文分词**: jieba 分词、自定义词典、停用词过滤
-- **关键词提取**: TF-IDF、TextRank
-
-### 情感分析 (SentimentModel)
-
-| 模型 | 说明 | 输出 |
-|------|------|------|
-| BERT | chinese-roberta-wwm-ext | 三分类 (正面/中性/负面) |
-| Qwen2.5 | 1.5B 参数大模型 | 情感分数 + 18种情绪标签 |
-
-**支持的 18 种情绪标签：**
-- 正面：喜悦、兴奋、满足、感激、爱
-- 负面：愤怒、厌恶、悲伤、恐惧、失望
-- 中性：惊讶、困惑、好奇、期待、焦虑、平静、无聊、冷漠
-
-### 话题聚类 (TopicCluster)
-
-基于 HISEvent + RagSEDE 思路的增量话题聚类系统：
-
-- **BERT 嵌入**: 使用 `chinese-roberta-wwm-ext` 提取 768 维 [CLS] 向量，L2 归一化
-- **Single-Pass 聚类**: Faiss IndexFlatIP 检索最近话题质心，阈值匹配归入或新建话题
-- **话题合并**: 全局话题对相似度检查，自动合并高相似话题
-- **生命周期管理**: emerging → active → declining → ended 状态自动流转
-- **LLM 命名**: Qwen2.5 自动生成话题名称、舆情描述和加权关键词
-- **演化追踪**: 每日快照记录话题热度、情感趋势、平台分布变化
-
-| 命令 | 功能 |
-|------|------|
-| `python -m TopicCluster cluster` | 增量聚类 |
-| `python -m TopicCluster describe` | LLM 话题命名 |
-| `python -m TopicCluster merge` | 合并相似话题 |
-| `python -m TopicCluster evolve` | 更新生命周期/统计/演化快照 |
-| `python -m TopicCluster stats` | 查看统计信息 |
-| `python -m TopicCluster recluster` | 全量重聚类 |
-
 ## 使用示例
 
-### 示例 1：完整的舆情分析工作流
+### 完整舆情分析工作流
 
 ```bash
-# Step 1: 采集小红书数据
+# Step 1: 采集数据
 cd SentimentSpider/MediaCrawler
 python main.py --platform xhs --keywords "新能源汽车" --type search
-
-# Step 2: 回到根目录，进行数据预处理
 cd ../..
+
+# Step 2: 数据预处理
 python -m SentimentProcessor all
 
 # Step 3: 情感分析
@@ -255,166 +532,140 @@ python run_qwen_analyze.py
 
 # Step 4: 话题聚类
 python -m TopicCluster cluster --batch-size 64
-
-# Step 5: LLM 话题命名
 python -m TopicCluster describe --all --include-ended
-
-# Step 6: 话题合并 + 统计更新
 python -m TopicCluster merge
 python -m TopicCluster evolve
 
-# Step 7: 查看统计结果
-python -m SentimentProcessor stats
+# Step 5: 知识图谱构建
+python -m KnowledgeGraph extract --topic-id 1 --limit 50
+python -m KnowledgeGraph build --topic-id 1 --clear
+
+# Step 6: 查看结果
 python -m TopicCluster stats
+python -m KnowledgeGraph query --topic-id 1
+python -m KnowledgeGraph stats
 ```
 
-### 示例 2：只分析内容（不分析评论）
+## CLI 命令汇总
 
-```bash
-# 预处理内容
-python -m SentimentProcessor content
+### SentimentProcessor
 
-# 情感分析内容
-python run_qwen_analyze.py --type content
-```
+| 命令 | 说明 |
+|------|------|
+| `python -m SentimentProcessor content` | 处理内容 |
+| `python -m SentimentProcessor comments` | 处理评论 |
+| `python -m SentimentProcessor all` | 处理全部 |
+| `python -m SentimentProcessor stats` | 查看统计 |
 
-### 示例 3：试运行模式（不写入数据库）
+### TopicCluster
 
-```bash
-# 预处理试运行
-python -m SentimentProcessor all --dry-run
+| 命令 | 说明 |
+|------|------|
+| `python -m TopicCluster cluster` | 增量聚类 |
+| `python -m TopicCluster describe [--all]` | LLM 话题命名 |
+| `python -m TopicCluster merge [--dry-run]` | 合并相似话题 |
+| `python -m TopicCluster evolve` | 更新生命周期/统计/演化快照 |
+| `python -m TopicCluster wordcloud [--all]` | 生成词云数据 |
+| `python -m TopicCluster recluster` | 全量重聚类 |
+| `python -m TopicCluster stats` | 查看统计 |
 
-# 情感分析试运行
-python run_qwen_analyze.py --dry-run
-```
+### KnowledgeGraph
 
-### 示例 4：批量处理大数据
-
-```bash
-# 使用较小的批次大小，避免内存溢出
-python -m SentimentProcessor all -b 50
-python run_qwen_analyze.py --batch-size 20
-```
-
-### 示例 5：Python API 使用
-
-```python
-# 文本预处理
-from SentimentProcessor import TextCleaner, Segmenter, KeywordExtractor
-
-cleaner = TextCleaner()
-segmenter = Segmenter()
-extractor = KeywordExtractor()
-
-text = "这个产品真的太好用了！强烈推荐给大家 #好物分享#"
-
-# 清洗文本
-cleaned = cleaner.clean(text)
-print(f"清洗后: {cleaned}")
-
-# 分词
-words = segmenter.segment(cleaned)
-print(f"分词: {words}")
-
-# 提取关键词
-keywords = extractor.extract_tfidf(cleaned, topk=5)
-print(f"关键词: {keywords}")
-```
-
-```python
-# 情感分析
-from SentimentModel import SentimentPredictor
-
-predictor = SentimentPredictor(model_path="models/best_model")
-result = predictor.predict("这个产品真的太好用了！")
-
-print(f"情感: {result.label}")
-print(f"置信度: {result.confidence:.2%}")
-```
+| 命令 | 说明 |
+|------|------|
+| `python -m KnowledgeGraph extract -t <ID>` | 抽取实体关系 |
+| `python -m KnowledgeGraph build -t <ID>` | 构建 Neo4j 图 |
+| `python -m KnowledgeGraph pipeline -t <ID>` | 完整流水线 (抽取+构建) |
+| `python -m KnowledgeGraph query -t <ID>` | 查询图谱信息 |
+| `python -m KnowledgeGraph stats` | 全局统计 |
 
 ## 配置说明
 
-### 环境变量
-
-| 变量名 | 必须 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `MYSQL_DB_HOST` | 否 | localhost | 数据库主机 |
-| `MYSQL_DB_PORT` | 否 | 3306 | 数据库端口 |
-| `MYSQL_DB_USER` | 否 | root | 数据库用户 |
-| `MYSQL_DB_PWD` | **是** | - | 数据库密码 |
+| 变量 | 必须 | 默认值 | 说明 |
+|------|------|--------|------|
+| `MYSQL_DB_HOST` | 否 | localhost | MySQL 主机 |
+| `MYSQL_DB_PORT` | 否 | 3306 | MySQL 端口 |
+| `MYSQL_DB_USER` | 否 | root | MySQL 用户 |
+| `MYSQL_DB_PWD` | **是** | - | MySQL 密码 |
 | `MYSQL_DB_NAME` | 否 | sentiment | 数据库名 |
 | `HF_ENDPOINT` | 否 | https://hf-mirror.com | HuggingFace 镜像 |
-
-### 模型下载
-
-首次运行会自动下载模型，国内用户建议配置 HuggingFace 镜像：
-
-```env
-HF_ENDPOINT=https://hf-mirror.com
-```
-
-模型大小参考：
-- `Qwen2.5-1.5B-Instruct`: ~3GB
-- `chinese-roberta-wwm-ext`: ~400MB
+| `QWEN_MODEL_NAME` | 否 | Qwen/Qwen2.5-1.5B-Instruct | Qwen 模型 |
+| `BERT_MODEL_NAME` | 否 | hfl/chinese-roberta-wwm-ext | BERT 模型 |
+| `NEO4J_URI` | 否 | bolt://localhost:7687 | Neo4j 连接地址 |
+| `NEO4J_USER` | 否 | neo4j | Neo4j 用户 |
+| `NEO4J_PASSWORD` | KG模块需要 | - | Neo4j 密码 |
+| `DEEPSEEK_API_KEY` | KG模块需要 | - | DeepSeek API Key |
+| `DEEPSEEK_API_BASE` | 否 | https://api.deepseek.com | DeepSeek API 地址 |
+| `DEEPSEEK_MODEL` | 否 | deepseek-chat | DeepSeek 模型 |
 
 ## 数据库表结构
 
-### 原始数据表
+### 核心表
 
 | 表名 | 说明 |
 |------|------|
-| `unified_content` | 统一内容表 (各平台帖子/笔记) |
-| `unified_comment` | 统一评论表 (各平台评论) |
-| `xhs_note` | 小红书笔记 |
-| `xhs_note_comment` | 小红书评论 |
-| `douyin_aweme` | 抖音视频 |
-| `douyin_aweme_comment` | 抖音评论 |
-
-### 预处理字段
-
-| 字段 | 说明 |
-|------|------|
-| `title_cleaned` / `content_cleaned` | 清洗后的文本 |
-| `title_segmented` / `content_segmented` | 分词结果 (JSON) |
-| `keywords` | 关键词 (JSON) |
-| `sentiment` | 情感标签 (positive/neutral/negative) |
-| `sentiment_score` | 情感分数 (-1.0 ~ 1.0) |
-| `emotion_tags` | 情绪标签 (JSON) |
-
-### 话题聚类表
-
-| 表名 | 说明 |
-|------|------|
-| `topic_event` | 话题事件 (质心嵌入、名称、状态、情感/热度统计) |
+| `unified_content` | 统一内容表 (含 topic_id, sentiment, keywords 等) |
+| `unified_comment` | 统一评论表 |
+| `processed_content` | 预处理结果 (清洗/分词/关键词) |
+| `topic_event` | 话题事件 (质心嵌入、状态、情感/热度统计) |
 | `topic_evolution` | 话题演化快照 (每日热度、情感、平台分布) |
-| `topic_merge_log` | 话题合并日志 (合并记录、相似度、关键词) |
+| `topic_merge_log` | 话题合并日志 |
+| `kg_extraction` | 实体关系抽取结果 (entities JSON, relations JSON) |
+| `kg_build_log` | Neo4j 构建日志 |
 
-## 常见问题
+## 参考文献
 
-### Q: 模型下载太慢？
+> 以下为本项目各模块所引用的核心算法与模型的学术出处。
 
-配置 HuggingFace 镜像：
-```bash
-export HF_ENDPOINT=https://hf-mirror.com
-```
-或在 `.env` 文件中设置。
+### 情感分析
 
-### Q: GPU 内存不足？
+- **[1]** Cui Y, Che W, Liu T, Qin B, Wang S, Hu G. **Revisiting Pre-Trained Models for Chinese Natural Language Processing**. *Findings of the Association for Computational Linguistics: EMNLP 2020*, pp. 657–668, 2020.
+  - 用途: `chinese-roberta-wwm-ext` 预训练模型，用于情感分类基座和文本嵌入提取
+  - 模块: `SentimentModel/models/bert_classifier.py`, `TopicCluster/cluster/embedder.py`
 
-1. 使用更小的批次大小：`--batch-size 10`
-2. 使用 CPU 推理：在 `.env` 中设置 `DEVICE=cpu`
-3. 使用更小的模型：`Qwen2.5-0.5B-Instruct`
+- **[2]** Cui Y, Che W, Liu T, Qin B, Yang Z. **Pre-Training with Whole Word Masking for Chinese BERT**. *IEEE/ACM Transactions on Audio, Speech, and Language Processing*, vol. 29, pp. 3504–3514, 2021.
+  - 用途: 全词遮蔽 (Whole Word Masking) 预训练策略，提升中文语义理解
+  - 模块: `SentimentModel`, `TopicCluster`
 
-### Q: 数据库连接失败？
+- **[3]** Hu E J, Shen Y, Wallis P, Allen-Zhu Z, Li Y, Wang S, Wang L, Chen W. **LoRA: Low-Rank Adaptation of Large Language Models**. *International Conference on Learning Representations (ICLR)*, 2022.
+  - 用途: Qwen2.5-1.5B-Instruct 的参数高效微调 (rank=8, alpha=16)
+  - 模块: `SentimentModel/qwen/trainer.py`
 
-1. 检查 MySQL 服务是否启动
-2. 检查 `.env` 中的密码是否正确
-3. 检查数据库是否已创建
+- **[4]** Dettmers T, Pagnoni A, Holtzman A, Zettlemoyer L. **QLoRA: Efficient Finetuning of Quantized Large Language Models**. *Advances in Neural Information Processing Systems (NeurIPS)*, 2023.
+  - 用途: 4-bit NF4 量化，降低 Qwen2.5 微调显存需求
+  - 模块: `SentimentModel/qwen/trainer.py` (BitsAndBytesConfig)
 
-### Q: 爬虫无法运行？
+- **[5]** Demszky D, Movshovitz-Attias D, Ko J, Cowen A, Nemade G, Ravi S. **GoEmotions: A Dataset of Fine-Grained Emotions**. *Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics (ACL)*, pp. 4040–4054, 2020.
+  - 用途: 18 类情绪标签体系设计参考，适配中文社交媒体场景
+  - 模块: `SentimentModel/qwen/data_prepare.py`
 
-1. 确保已安装 Playwright：`playwright install chromium`
-2. 某些平台需要登录 Cookie，请查看 MediaCrawler 文档
+### 文本预处理
+
+- **[6]** Mihalcea R, Tarau P. **TextRank: Bringing Order into Texts**. *Proceedings of the 2004 Conference on Empirical Methods in Natural Language Processing (EMNLP)*, pp. 404–411, 2004.
+  - 用途: 基于 PageRank 的无监督关键词提取
+  - 模块: `SentimentProcessor/processor/extractor.py`
+
+### 话题聚类
+
+- **[7]** Johnson J, Douze M, Jégou H. **Billion-scale Similarity Search with GPUs**. *IEEE Transactions on Big Data*, vol. 7, no. 3, pp. 535–547, 2021.
+  - 用途: Faiss IndexFlatIP 内积向量检索，用于话题质心匹配
+  - 模块: `TopicCluster/cluster/index.py`
+
+- **[8]** Cao Y, Ngo C, Zhang J, Chua T. **HISEvent: A Large-Scale High Inter-Intra Similarity and Hard Cases Benchmark for Social Media Event Detection**. *Proceedings of the AAAI Conference on Artificial Intelligence (AAAI)*, 2024.
+  - 用途: Single-Pass 增量聚类框架参考，本项目在其嵌入+检索框架上简化适配流式场景
+  - 模块: `TopicCluster/cluster/engine.py`
+
+### 知识图谱
+
+- **[9]** Xiao N, Hu Z, Zheng J, Liu J, Cochez M, Chen J, Deng S, Ye H, Zhang N, Chen H, et al. **OneKE: A Dockerized Schema-Guided LLM Agent-based Knowledge Extraction System**. *Proceedings of the ACM Web Conference (WWW)*, 2025.
+  - 用途: Schema Agent → Extraction Agent → Reflection Agent 三阶段实体关系抽取流水线
+  - 模块: `OneKE/src/pipeline.py`, `KnowledgeGraph/extraction/extractor.py`
+
+### 训练优化
+
+- **[10]** Loshchilov I, Hutter F. **Decoupled Weight Decay Regularization**. *International Conference on Learning Representations (ICLR)*, 2019.
+  - 用途: AdamW 优化器，解耦权重衰减与梯度更新
+  - 模块: `SentimentModel/training/trainer.py`
 
 ## 项目规划
 
@@ -422,8 +673,10 @@ export HF_ENDPOINT=https://hf-mirror.com
 - [x] 数据预处理模块 (SentimentProcessor)
 - [x] 情感分析模型 (SentimentModel)
 - [x] 话题聚类与事件监测 (TopicCluster)
-- [ ] API 服务 (SentimentAPI)
-- [ ] 可视化仪表板 (SentimentDashboard)
+- [x] 知识图谱构建 (KnowledgeGraph + OneKE)
+- [ ] API 服务 (Spring Boot + Neo4j/MySQL)
+- [ ] 可视化仪表板 (前端知识图谱展示)
+- [ ] 舆情预测与应对方案 (见微知著)
 
 ## 作者
 
