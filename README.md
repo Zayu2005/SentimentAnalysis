@@ -548,6 +548,46 @@ python -m KnowledgeGraph stats
 
 ## CLI 命令汇总
 
+### SentimentSpider (数据采集与同步)
+
+| 命令 | 说明 |
+|------|------|
+| `cd SentimentSpider && python -m hot_news.cli.main fetch` | 获取热点新闻 |
+| `cd SentimentSpider && python -m hot_news.cli.main fetch xhs wb bili -l 50` | 指定平台获取热点 |
+| `cd SentimentSpider && python -m hot_news.cli.main sync` | 增量同步各平台数据到统一表 |
+| `cd SentimentSpider && python -m hot_news.cli.main sync xhs wb` | 指定平台同步 |
+| `cd SentimentSpider && python -m hot_news.cli.main sync --full` | 全量同步（清空后重建） |
+| `cd SentimentSpider && python -m hot_news.cli.main sync --no-comments` | 只同步内容，不同步评论 |
+| `cd SentimentSpider && python -m hot_news.cli.main sync-stats` | 查看同步统计 |
+| `cd SentimentSpider && python -m hot_news.cli.main show content` | 查看内容数据 |
+| `cd SentimentSpider && python -m hot_news.cli.main show comment` | 查看评论数据 |
+| `cd SentimentSpider && python -m hot_news.cli.main show hot` | 查看热点数据 |
+| `cd SentimentSpider && python -m hot_news.cli.main analyze` | 分析热点领域匹配 |
+| `cd SentimentSpider && python -m hot_news.cli.main run` | 运行完整流水线 |
+| `cd SentimentSpider/MediaCrawler && python main.py --platform xhs --keywords "关键词" --type search` | 爬取指定平台内容 |
+
+**完整数据采集到分析工作流**:
+
+```bash
+# Step 1: 采集热点
+cd SentimentSpider
+python -m hot_news.cli.main fetch
+
+# Step 2: 领域匹配分析
+python -m hot_news.cli.main analyze
+
+# Step 3: 触发爬取（根据热点关键词）
+cd MediaCrawler
+python main.py --platform xhs --keywords "新能源汽车" --type search
+
+# Step 4: 同步数据到统一表
+cd ..
+python -m hot_news.cli.main sync
+
+# Step 5: 查看同步结果
+python -m hot_news.cli.main sync-stats
+```
+
 ### SentimentProcessor
 
 | 命令 | 说明 |
