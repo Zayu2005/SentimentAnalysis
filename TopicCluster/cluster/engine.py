@@ -24,6 +24,7 @@ logger = get_logger("TopicCluster.engine")
 @dataclass
 class ClusterResult:
     """聚类结果统计"""
+
     total_processed: int = 0
     assigned_to_existing: int = 0
     new_topics_created: int = 0
@@ -40,7 +41,9 @@ class ClusterEngine:
     ):
         settings = get_settings()
         self.embedder = embedder or BertEmbedder()
-        self.similarity_threshold = similarity_threshold or settings.clustering.similarity_threshold
+        self.similarity_threshold = (
+            similarity_threshold or settings.clustering.similarity_threshold
+        )
         self.embedding_model = settings.clustering.embedding_model
 
         self.index: Optional[FaissIndex] = None
@@ -199,15 +202,42 @@ class ClusterEngine:
                 break
 
             # 2. 获取一批未聚类内容
-            current_batch = min(batch_size, total_to_process - processed) if max_items else batch_size
+            current_batch = (
+                min(batch_size, total_to_process - processed)
+                if max_items
+                else batch_size
+            )
             contents = TopicContentRepo.get_unclustered(limit=current_batch)
             if not contents:
                 break
 
             # 3. 提取文本并计算 BERT 嵌入
+            # 优先级：标题 > 正文 > 关键词 > 平台标识
             texts = []
             for c in contents:
-                text = c.get("content_cleaned") or c.get("title_cleaned") or ""
+                # 优先使用标题
+                text = c.get("title_cleaned") or c.get("content_cleaned") or ""
+
+                # 如果文本为空但有关键词，使用关键词
+                if not text and c.get("keywords"):
+                    keywords = c.get("keywords")
+                    if isinstance(keywords, str):
+                        import json
+
+                        try:
+                            keywords = json.loads(keywords)
+                        except (json.JSONDecodeError, TypeError):
+                            keywords = []
+                    if keywords:
+                        text = " ".join(
+                            [kw.get("word", str(kw)) for kw in keywords[:5]]
+                        )
+
+                # 如果仍然为空，使用平台标识作为兜底（避免空文本导致嵌入异常）
+                if not text:
+                    platform = c.get("platform", "unknown")
+                    text = f"[{platform}_content]"
+
                 texts.append(text[:500])
 
             try:
@@ -232,21 +262,25 @@ class ClusterEngine:
                         if not dry_run:
                             self._update_centroid_running_avg(topic_id, embedding)
 
-                        assignments.append({
-                            "unified_id": content["unified_id"],
-                            "topic_id": topic_id,
-                            "similarity": float(similarity),
-                        })
+                        assignments.append(
+                            {
+                                "unified_id": content["unified_id"],
+                                "topic_id": topic_id,
+                                "similarity": float(similarity),
+                            }
+                        )
                         result.assigned_to_existing += 1
                     else:
                         # 创建新话题
                         if not dry_run:
                             topic_id = self._create_new_topic(embedding, content)
-                            assignments.append({
-                                "unified_id": content["unified_id"],
-                                "topic_id": topic_id,
-                                "similarity": 1.0,
-                            })
+                            assignments.append(
+                                {
+                                    "unified_id": content["unified_id"],
+                                    "topic_id": topic_id,
+                                    "similarity": 1.0,
+                                }
+                            )
                         result.new_topics_created += 1
 
                     result.total_processed += 1
