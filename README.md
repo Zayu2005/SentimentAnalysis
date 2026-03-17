@@ -638,6 +638,68 @@ python -m hot_news.cli.main sync-stats
 | `DEEPSEEK_API_BASE` | 否 | https://api.deepseek.com | DeepSeek API 地址 |
 | `DEEPSEEK_MODEL` | 否 | deepseek-chat | DeepSeek 模型 |
 
+## 数据迁移
+
+### 从本地数据库迁移到远程
+
+#### 方式1: 使用 mysqldump (推荐)
+
+```bash
+# 导出单个表
+mysqldump -u root -p1234 sentiment 表名 --single-transaction | mysql -h 远程IP -u 用户名 -p密码 目标数据库
+
+# 批量迁移示例
+for table in xhs_note weibo_note bilibili_video kuaishou_video tieba_note zhihu_content; do
+  mysqldump -u root -p1234 sentiment $table | mysql -h 202.200.205.108 -u sentiment -pM22hbxnfhDyRCwaT sentiment
+done
+```
+
+#### 方式2: SQL导入 (统一表)
+
+```sql
+-- 迁移内容到统一表 (以微博为例)
+INSERT INTO unified_content (
+    platform, content_id, content_type, user_id, nickname, title, content, content_url, media_type, 
+    liked_count, comment_count, share_count, source_keyword, add_ts
+)
+SELECT 
+    'wb', CAST(note_id AS CHAR), 'note', user_id, nickname, '', content, note_url, 'text',
+    COALESCE(CAST(liked_count AS UNSIGNED), 0),
+    COALESCE(CAST(comments_count AS UNSIGNED), 0),
+    COALESCE(CAST(shared_count AS UNSIGNED), 0),
+    source_keyword, add_ts
+FROM weibo_note;
+
+-- 迁移评论到统一表
+INSERT INTO unified_comment (
+    platform, comment_id, content_id, user_id, nickname, content, add_ts
+)
+SELECT 
+    'wb', CAST(comment_id AS CHAR), CAST(note_id AS CHAR), user_id, nickname, content, add_ts
+FROM weibo_note_comment;
+```
+
+### 常用数据库查询
+
+```sql
+-- 查看各平台数据分布
+SELECT platform, COUNT(*) as cnt FROM unified_content GROUP BY platform;
+
+-- 查看已聚类内容
+SELECT platform, COUNT(*) as cnt FROM unified_content WHERE topic_id IS NOT NULL GROUP BY platform;
+
+-- 话题统计
+SELECT id, event_name, content_count, platform_distribution FROM topic_event;
+
+-- 话题互动数据
+SELECT te.id, te.content_count, 
+       SUM(uc.liked_count) as total_likes,
+       SUM(uc.comment_count) as total_comments
+FROM topic_event te
+JOIN unified_content uc ON uc.topic_id = te.id
+GROUP BY te.id;
+```
+
 ## 数据库表结构
 
 ### 核心表
@@ -652,6 +714,51 @@ python -m hot_news.cli.main sync-stats
 | `topic_merge_log` | 话题合并日志 |
 | `kg_extraction` | 实体关系抽取结果 (entities JSON, relations JSON) |
 | `kg_build_log` | Neo4j 构建日志 |
+
+### 原始数据表
+
+| 表名 | 说明 |
+|------|------|
+| `xhs_note` / `xhs_note_comment` | 小红书 |
+| `weibo_note` / `weibo_note_comment` | 微博 |
+| `bilibili_video` / `bilibili_video_comment` | B站 |
+| `kuaishou_video` / `kuaishou_video_comment` | 快手 |
+| `tieba_note` / `tieba_comment` | 贴吧 |
+| `zhihu_content` / `zhihu_comment` | 知乎 |
+
+## Troubleshooting
+
+### 问题1: 模块找不到
+```bash
+# 确保在正确的目录
+cd E:/Code/Project/SentimentAnalysis
+
+# 确保 conda 环境已激活
+conda activate sentiment
+```
+
+### 问题2: 数据库连接失败
+```bash
+# 检查 .env 配置
+cat .env
+
+# 测试连接
+mysql -h 202.200.205.108 -u sentiment -pM22hbxnfhDyRCwaT sentiment -e "SELECT 1"
+```
+
+### 问题3: 依赖缺失
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 或使用 conda
+conda install pytorch transformers jieba faiss-cpu
+```
+
+### 问题4: 话题聚类全部归为一个话题
+- 可能是相似度阈值设置过低 (默认 0.75)
+- 可以调整 `TopicCluster/config/settings.py` 中的 `similarity_threshold`
+- 或使用 `--dry-run` 参数预览聚类效果
 
 ## 参考文献
 
