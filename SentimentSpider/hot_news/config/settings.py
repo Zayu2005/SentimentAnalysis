@@ -16,6 +16,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 
+
 # 加载 .env 文件 (优先从项目根目录加载)
 def _find_env_file() -> Path:
     """查找 .env 文件，优先级: 根目录 > MediaCrawler"""
@@ -31,17 +32,29 @@ def _find_env_file() -> Path:
         return legacy_env
     return root_env
 
+
 env_file = _find_env_file()
 load_dotenv(str(env_file))
 print(f"[Config] 加载 .env: {env_file}")
 
 
 class DBConfig(BaseModel):
-    host: str = "localhost"
+    host: str = ""
     port: int = 3306
-    user: str = "root"
-    password: str = "1234"
-    database: str = "sentiment"
+    user: str = ""
+    password: str = ""
+    database: str = ""
+
+    def __init__(self, **data):
+        if not data:
+            data = {
+                "host": os.getenv("MYSQL_DB_HOST", "localhost"),
+                "port": int(os.getenv("MYSQL_DB_PORT", "3306")),
+                "user": os.getenv("MYSQL_DB_USER", "root"),
+                "password": os.getenv("MYSQL_DB_PWD", ""),
+                "database": os.getenv("MYSQL_DB_NAME", "sentiment"),
+            }
+        super().__init__(**data)
 
     @property
     def connection_kwargs(self):
@@ -124,13 +137,7 @@ class HotNewsSettings:
 
     def _load_db_config(self):
         """从环境变量加载数据库配置"""
-        self._db_config = DBConfig(
-            host=os.getenv("MYSQL_DB_HOST", "localhost"),
-            port=int(os.getenv("MYSQL_DB_PORT", 3306)),
-            user=os.getenv("MYSQL_DB_USER", "root"),
-            password=os.getenv("MYSQL_DB_PWD", ""),
-            database=os.getenv("MYSQL_DB_NAME", "sentiment"),
-        )
+        self._db_config = DBConfig()
 
     def _get_connection(self):
         """获取数据库连接"""

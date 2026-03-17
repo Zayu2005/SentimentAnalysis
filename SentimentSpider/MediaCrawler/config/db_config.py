@@ -51,9 +51,9 @@ except ImportError:
     pass  # python-dotenv 不是必需的
 
 # mysql config
-MYSQL_DB_PWD = os.getenv("MYSQL_DB_PWD", "1234")
-MYSQL_DB_USER = os.getenv("MYSQL_DB_USER", "root")
-MYSQL_DB_HOST = os.getenv("MYSQL_DB_HOST", "localhost")
+MYSQL_DB_PWD = os.getenv("MYSQL_DB_PWD", "M22hbxnfhDyRCwaT")
+MYSQL_DB_USER = os.getenv("MYSQL_DB_USER", "sentiment")
+MYSQL_DB_HOST = os.getenv("MYSQL_DB_HOST", "202.200.205.108")
 MYSQL_DB_PORT = os.getenv("MYSQL_DB_PORT", 3306)
 MYSQL_DB_NAME = os.getenv("MYSQL_DB_NAME", "sentiment")
 
