@@ -26,7 +26,6 @@ from .config import (
     ModelConfig,
     TrainingConfig,
     InferenceConfig,
-    DatabaseConfig,
     Settings,
     get_settings
 )
@@ -70,7 +69,6 @@ __all__ = [
     "ModelConfig",
     "TrainingConfig",
     "InferenceConfig",
-    "DatabaseConfig",
     "Settings",
     "get_settings",
 

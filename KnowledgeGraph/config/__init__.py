@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 """配置模块"""
 
+from config.settings import Neo4jConfig, DeepSeekConfig
 from .settings import (
-    Neo4jConfig,
-    DeepSeekConfig,
-    KGDatabaseConfig,
     ExtractionConfig,
     KGSettings,
     get_kg_settings,
@@ -13,7 +11,6 @@ from .settings import (
 __all__ = [
     'Neo4jConfig',
     'DeepSeekConfig',
-    'KGDatabaseConfig',
     'ExtractionConfig',
     'KGSettings',
     'get_kg_settings',

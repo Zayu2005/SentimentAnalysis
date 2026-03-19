@@ -3,56 +3,11 @@
 # 配置加载器
 # =====================================================
 
-import os
-from pathlib import Path
 from typing import Optional, List
 
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
-
-# 加载 .env 文件 (优先从项目根目录加载)
-def _find_env_file() -> Path:
-    """查找 .env 文件，优先级: 根目录 > MediaCrawler"""
-    root_dir = Path(__file__).parent.parent.parent
-    # 优先使用根目录的 .env
-    root_env = root_dir / ".env"
-    if root_env.exists():
-        return root_env
-    # 兼容旧路径
-    legacy_env = root_dir / "SentimentSpider" / "MediaCrawler" / ".env"
-    if legacy_env.exists():
-        return legacy_env
-    return root_env  # 返回根目录路径，让 load_dotenv 自动查找
-
-env_file = _find_env_file()
-load_dotenv(str(env_file))
-
-
-class DBConfig(BaseModel):
-    """数据库配置"""
-    host: str = "localhost"
-    port: int = 3306
-    user: str = "root"
-    password: str = ""
-    database: str = "sentiment"
-
-    @property
-    def connection_url(self) -> str:
-        """获取数据库连接URL"""
-        return f"mysql+pymysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}?charset=utf8mb4"
-
-    @property
-    def connection_kwargs(self) -> dict:
-        """获取pymysql连接参数"""
-        return {
-            "host": self.host,
-            "port": self.port,
-            "user": self.user,
-            "password": self.password,
-            "database": self.database,
-            "charset": "utf8mb4",
-        }
+from config.settings import get_mysql_config
 
 
 class ProcessorConfig(BaseModel):
@@ -95,13 +50,7 @@ class Settings:
 
     def _init_config(self):
         """初始化配置"""
-        self.db = DBConfig(
-            host=os.getenv("MYSQL_DB_HOST", "localhost"),
-            port=int(os.getenv("MYSQL_DB_PORT", 3306)),
-            user=os.getenv("MYSQL_DB_USER", "root"),
-            password=os.getenv("MYSQL_DB_PWD", ""),
-            database=os.getenv("MYSQL_DB_NAME", "sentiment"),
-        )
+        self.db = get_mysql_config()
         self.processor = ProcessorConfig()
 
     def reload(self):

@@ -6,32 +6,11 @@
 """
 
 import os
-from pathlib import Path
 from typing import Optional, Literal
 from pydantic import BaseModel, Field
 from functools import lru_cache
 
-# 加载 .env 文件 (优先从项目根目录加载)
-try:
-    from dotenv import load_dotenv
-
-    def _find_env_file() -> Path:
-        """查找 .env 文件，优先级: 根目录 > MediaCrawler"""
-        root_dir = Path(__file__).parent.parent.parent
-        # 优先使用根目录的 .env
-        root_env = root_dir / ".env"
-        if root_env.exists():
-            return root_env
-        # 兼容旧路径
-        legacy_env = root_dir / "SentimentSpider" / "MediaCrawler" / ".env"
-        if legacy_env.exists():
-            return legacy_env
-        return root_env
-
-    env_file = _find_env_file()
-    load_dotenv(str(env_file))
-except ImportError:
-    pass  # python-dotenv 不是必需的
+from config.settings import get_mysql_config, get_model_names
 
 
 class ModelConfig(BaseModel):
@@ -162,51 +141,12 @@ class InferenceConfig(BaseModel):
     )
 
 
-class DatabaseConfig(BaseModel):
-    """数据库配置"""
-    host: str = Field(
-        default="localhost",
-        description="数据库主机"
-    )
-    port: int = Field(
-        default=3306,
-        description="数据库端口"
-    )
-    user: str = Field(
-        default="root",
-        description="数据库用户名"
-    )
-    password: str = Field(
-        default="",
-        description="数据库密码"
-    )
-    database: str = Field(
-        default="sentiment",
-        description="数据库名称"
-    )
-    charset: str = Field(
-        default="utf8mb4",
-        description="字符集"
-    )
-
-    @classmethod
-    def from_env(cls) -> "DatabaseConfig":
-        """从环境变量加载配置"""
-        return cls(
-            host=os.getenv("MYSQL_DB_HOST", "localhost"),
-            port=int(os.getenv("MYSQL_DB_PORT", "3306")),
-            user=os.getenv("MYSQL_DB_USER", "root"),
-            password=os.getenv("MYSQL_DB_PWD", ""),
-            database=os.getenv("MYSQL_DB_NAME", "sentiment")
-        )
-
-
 class Settings(BaseModel):
     """全局设置"""
     model: ModelConfig = Field(default_factory=ModelConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     inference: InferenceConfig = Field(default_factory=InferenceConfig)
-    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    database: object = Field(default=None)
 
     # 路径配置
     base_dir: str = Field(
@@ -231,8 +171,12 @@ class Settings(BaseModel):
     @classmethod
     def from_env(cls) -> "Settings":
         """从环境变量加载设置"""
+        model_names = get_model_names()
         return cls(
-            database=DatabaseConfig.from_env()
+            model=ModelConfig(
+                name=model_names.bert_model,
+            ),
+            database=get_mysql_config(),
         )
 
 

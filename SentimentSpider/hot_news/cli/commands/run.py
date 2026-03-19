@@ -59,7 +59,9 @@ async def _analyze_domain(news_list, selected_domains):
                 )
                 return 1 if result.is_match else 0
             except Exception as e:
-                error(f"  [错误] {news_row['title'][:20]}... @ {domain.domain_name}: {str(e)[:40]}")
+                error(
+                    f"  [错误] {news_row['title'][:20]}... @ {domain.domain_name}: {str(e)[:40]}"
+                )
                 return 0
 
     # 创建所有的检查任务
@@ -80,7 +82,9 @@ async def _analyze_domain(news_list, selected_domains):
     return matched_count
 
 
-async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_batch_id: int = None):
+async def _extract_keywords(
+    selected_domains, keyword_limit, all_news=None, run_batch_id: int = None
+):
     """异步提取关键词 - 使用并发加速
 
     Args:
@@ -113,7 +117,9 @@ async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_
                     keyword_repo.bulk_save(keywords, run_batch_id=run_batch_id)
                     return len(keywords)
             except Exception as e:
-                error(f"  [错误] 提取关键词失败 {news_row['title'][:20]}...: {str(e)[:40]}")
+                error(
+                    f"  [错误] 提取关键词失败 {news_row['title'][:20]}...: {str(e)[:40]}"
+                )
             return 0
 
     tasks = []
@@ -121,7 +127,9 @@ async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_
     # 如果有domain配置，从匹配的热点中提取
     if selected_domains:
         for domain in selected_domains:
-            matched_news = AnalysisRepository().get_matched_news(domain.id, keyword_limit)
+            matched_news = AnalysisRepository().get_matched_news(
+                domain.id, keyword_limit
+            )
             for news_row in matched_news:
                 task = extract_and_save(news_row, domain)
                 tasks.append(task)
@@ -129,6 +137,7 @@ async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_
     # 如果没有domain配置，从所有热点中提取（不筛选）
     elif all_news:
         from hot_news.config.settings import DomainConfig
+
         virtual_domain = DomainConfig(
             id=0,
             domain_name="通用",
@@ -151,7 +160,14 @@ async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_
 
 
 async def _run_pipeline_inner(
-    platforms, domains, crawl_platforms, hot_limit, keyword_limit, no_llm, no_crawl, no_sync=False
+    platforms,
+    domains,
+    crawl_platforms,
+    hot_limit,
+    keyword_limit,
+    no_llm,
+    no_crawl,
+    no_sync=False,
 ):
     """内部异步执行函数"""
     start_time = time.time()
@@ -265,13 +281,17 @@ async def _run_pipeline_inner(
             if selected_domains:
                 info(f"从 {len(selected_domains)} 个领域的匹配热点中提取关键词...")
                 info(f"⚡ 并发执行 (最多 {MAX_CONCURRENT_LLM_CALLS} 并发)")
-                keyword_count = await _extract_keywords(selected_domains, keyword_limit, run_batch_id=log_id)
+                keyword_count = await _extract_keywords(
+                    selected_domains, keyword_limit, run_batch_id=log_id
+                )
                 info(f"\n✅ 步骤完成: 提取 {keyword_count} 个关键词")
             else:
                 info("未配置领域，从所有热点中提取关键词...")
                 info(f"⚡ 并发执行 (最多 {MAX_CONCURRENT_LLM_CALLS} 并发)")
                 all_news_list = repo.get_recent(hot_limit)
-                keyword_count = await _extract_keywords([], keyword_limit, all_news=all_news_list, run_batch_id=log_id)
+                keyword_count = await _extract_keywords(
+                    [], keyword_limit, all_news=all_news_list, run_batch_id=log_id
+                )
                 info(f"\n✅ 步骤完成: 提取 {keyword_count} 个关键词")
         else:
             info("⏭️  跳过提取 (--no-llm 标志)")
@@ -298,29 +318,30 @@ async def _run_pipeline_inner(
             info(f"目标爬虫平台: {', '.join(crawl_platform_list)}")
 
             # 使用run_batch_id过滤，只爬取当前运行批次的关键词
-            keywords = keyword_repo.get_by_batch_never_crawled(run_batch_id=log_id, limit=20)
+            keywords = keyword_repo.get_by_batch_never_crawled(
+                run_batch_id=log_id, limit=20
+            )
 
             if keywords:
                 info(f"准备爬取 {len(keywords)} 个关键词...")
-                success_count = 0
-                fail_count = 0
 
+                # 提取关键词列表
+                keyword_list = [kw["keyword"] for kw in keywords]
+                keyword_ids = {kw["keyword"]: kw["id"] for kw in keywords}
+
+                # 使用批量爬取方法，一次性传递所有关键词
+                success_count = trigger.trigger_batch(
+                    keywords=keyword_list,
+                    platforms=crawl_platform_list,
+                    max_comments=10,
+                )
+
+                # 更新关键词的搜索次数
                 for kw in keywords:
-                    for platform in crawl_platform_list:
-                        try:
-                            if trigger.trigger_crawl(kw["keyword"], platform, 10):
-                                keyword_repo.increment_search_count(kw["id"])
-                                crawl_count += 1
-                                success_count += 1
-                                info(f"  ✓ {kw['keyword']:20} @ {platform}")
-                            else:
-                                fail_count += 1
-                                info(f"  ✗ {kw['keyword']:20} @ {platform} (失败)")
-                        except Exception as e:
-                            fail_count += 1
-                            error(f"  ✗ {kw['keyword']:20} @ {platform} (错误: {str(e)[:30]})")
+                    keyword_repo.increment_search_count(kw["id"])
+                    crawl_count += 1
 
-                info(f"\n✅ 步骤完成: 成功触发 {success_count} 次, 失败 {fail_count} 次")
+                info(f"\n✅ 步骤完成: 成功触发 {success_count} 个关键词")
             else:
                 info("⏭️  无待爬取关键词 (当前批次无提取的关键词)")
                 info("✅ 步骤完成: 跳过")

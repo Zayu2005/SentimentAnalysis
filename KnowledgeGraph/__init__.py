@@ -25,7 +25,6 @@ __author__ = "Zayy2005x"
 from .config import (
     Neo4jConfig,
     DeepSeekConfig,
-    KGDatabaseConfig,
     ExtractionConfig,
     KGSettings,
     get_kg_settings,
@@ -66,7 +65,6 @@ __all__ = [
     # 配置
     "Neo4jConfig",
     "DeepSeekConfig",
-    "KGDatabaseConfig",
     "ExtractionConfig",
     "KGSettings",
     "get_kg_settings",

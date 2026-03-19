@@ -36,9 +36,9 @@ class CrawlTrigger:
         process = None
         try:
             # 获取 MediaCrawler 目录的绝对路径
-            mediacrawler_dir = os.path.abspath(os.path.join(
-                os.path.dirname(__file__), "..", "..", "MediaCrawler"
-            ))
+            mediacrawler_dir = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "..", "MediaCrawler")
+            )
 
             # 优先使用 conda sentiment 环境
             conda_python = r"E:\develop\anaconda3\envs\sentiment\python.exe"
@@ -53,7 +53,7 @@ class CrawlTrigger:
                 "--platform",
                 platform,
                 "--lt",
-                "cookie",
+                "qrcode",
                 "--type",
                 "search",
                 "--keywords",
@@ -74,7 +74,7 @@ class CrawlTrigger:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
-                cwd=mediacrawler_dir  # 设置工作目录
+                cwd=mediacrawler_dir,  # 设置工作目录
             )
 
             stdout, stderr = process.communicate(timeout=600)
@@ -138,17 +138,81 @@ class CrawlTrigger:
         max_comments: int = 10,
     ) -> int:
         """
-        批量触发爬虫
+        批量触发爬虫 - 优化版，一次性传递所有关键词，只启动一次浏览器
 
         Returns:
             成功触发的数量
         """
         success_count = 0
 
-        for keyword in keywords:
-            for platform in platforms:
-                if self.trigger_crawl(keyword, platform, max_comments):
-                    success_count += 1
+        # 按平台分组，每个平台一次性爬取所有关键词
+        for platform in platforms:
+            keywords_str = ",".join(keywords)
+
+            process = None
+            try:
+                mediacrawler_dir = os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "..", "..", "MediaCrawler")
+                )
+
+                conda_python = r"E:\develop\anaconda3\envs\sentiment\python.exe"
+                if os.path.exists(conda_python):
+                    python_exe = conda_python
+                else:
+                    python_exe = sys.executable
+
+                cmd = [
+                    python_exe,
+                    "main.py",
+                    "--platform",
+                    platform,
+                    "--lt",
+                    "qrcode",
+                    "--type",
+                    "search",
+                    "--keywords",
+                    keywords_str,
+                    "--max_comments_count_singlenotes",
+                    str(max_comments),
+                    "--save_data_option",
+                    "db",
+                ]
+
+                env = os.environ.copy()
+                env["PYTHONPATH"] = mediacrawler_dir
+                env.pop("PYTHONHOME", None)
+
+                print(f"[CrawlTrigger] 开始爬取 {len(keywords)} 个关键词 @ {platform}")
+                print(f"[CrawlTrigger] 请扫码登录，登录后会自动爬取所有关键词...")
+
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    cwd=mediacrawler_dir,
+                )
+
+                stdout, stderr = process.communicate(timeout=600)
+
+                if process.returncode == 0:
+                    print(
+                        f"[CrawlTrigger] 成功爬取 {len(keywords)} 个关键词 @ {platform}"
+                    )
+                    success_count += len(keywords)
+                else:
+                    stdout_text = stdout.decode("utf-8", errors="ignore")
+                    stderr_text = stderr.decode("utf-8", errors="ignore")
+                    print(f"[CrawlTrigger] 爬取失败 @ {platform}")
+                    if stderr_text.strip():
+                        print(f"  错误信息:\n{stderr_text[-1000:]}")
+
+            except subprocess.TimeoutExpired:
+                if process:
+                    process.kill()
+                print(f"[CrawlTrigger] 爬取超时 @ {platform}")
+            except Exception as e:
+                print(f"[CrawlTrigger] 触发失败 @ {platform}: {e}")
 
         return success_count
 

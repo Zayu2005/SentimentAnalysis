@@ -2,6 +2,14 @@
 # Hot News Module - CLI Main Entry
 # =====================================================
 
+import sys
+from pathlib import Path
+
+# 将项目根目录添加到路径
+project_root = Path(__file__).parent.parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import typer
 from typing import Optional
 from pathlib import Path
@@ -131,7 +139,10 @@ def init_unified_db():
     import pymysql
 
     sql_file = (
-        Path(__file__).parent.parent / "database" / "migrations" / "002_unified_tables.sql"
+        Path(__file__).parent.parent
+        / "database"
+        / "migrations"
+        / "002_unified_tables.sql"
     )
 
     if not sql_file.exists():

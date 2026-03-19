@@ -4,7 +4,6 @@
 from .settings import (
     ClusteringConfig,
     LLMConfig,
-    DatabaseConfig,
     Settings,
     get_settings
 )
@@ -12,7 +11,6 @@ from .settings import (
 __all__ = [
     'ClusteringConfig',
     'LLMConfig',
-    'DatabaseConfig',
     'Settings',
     'get_settings'
 ]

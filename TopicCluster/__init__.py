@@ -26,7 +26,6 @@ __author__ = "Zayy2005x"
 from .config import (
     ClusteringConfig,
     LLMConfig,
-    DatabaseConfig,
     Settings,
     get_settings,
 )
@@ -69,7 +68,6 @@ __all__ = [
     # 配置
     "ClusteringConfig",
     "LLMConfig",
-    "DatabaseConfig",
     "Settings",
     "get_settings",
 
