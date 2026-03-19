@@ -245,13 +245,24 @@ def cmd_classify(args):
             print(f"\n话题 #{args.topic_id} 暂无分类信息")
         return
 
-    print(f"模型: {args.model or '默认'}")
+    provider = args.provider or "local"
+    print(f"分类器类型: {provider}")
+    if provider == "local":
+        print(f"本地模型: {args.model or '默认'}")
+    elif provider == "deepseek":
+        print(f"DeepSeek 模型: {args.model or 'deepseek-chat'}")
+    elif provider == "openai":
+        print(f"OpenAI 模型: {args.model or 'gpt-4o-mini'}")
+
     if args.dry_run:
         print("[试运行模式]")
     if args.only_unclassified:
         print("[仅未分类话题]")
 
-    classifier = LLMTopicClassifier(model_name=args.model)
+    classifier = LLMTopicClassifier(
+        provider=provider,
+        model_name=args.model,
+    )
 
     if args.topic_id:
         result = classifier.classify_and_save(args.topic_id, dry_run=args.dry_run)
@@ -399,8 +410,13 @@ def create_parser() -> argparse.ArgumentParser:
         help="指定话题ID (不指定则批量处理)"
     )
     classify_parser.add_argument(
+        "--provider", "-p", default="local",
+        choices=["local", "deepseek", "openai"],
+        help="分类器类型: local=本地模型, deepseek=DeepSeek API, openai=OpenAI API (默认: local)"
+    )
+    classify_parser.add_argument(
         "--model", "-m", default=None,
-        help="LLM 模型名称"
+        help="模型名称 (本地模型路径 / DeepSeek/OpenAI 模型名)"
     )
     classify_parser.add_argument(
         "--only-unclassified", action="store_true",
