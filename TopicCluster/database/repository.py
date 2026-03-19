@@ -639,3 +639,164 @@ class TopicContentRepo:
         """
         result = execute_query(sql, (topic_id, target_date), fetch_one=True)
         return result or {"content_count_delta": 0, "avg_sentiment": None, "interaction_count": 0}
+
+
+class TopicClassificationRepo:
+    """话题分类仓库 - 操作 topic_classification 表"""
+
+    @staticmethod
+    def upsert(
+        topic_id: int,
+        primary_category: Optional[str] = None,
+        secondary_category: Optional[str] = None,
+        tertiary_category: Optional[str] = None,
+        industry_tags: Optional[List[str]] = None,
+        event_type: Optional[str] = None,
+        audience_scope: str = "national",
+        time_sensitivity: str = "normal",
+        sentiment_intensity: str = "moderate",
+        controversy_level: str = "low",
+        risk_level: str = "safe",
+        risk_keywords: Optional[List[str]] = None,
+        classification_confidence: Optional[float] = None,
+        classified_by: str = "llm",
+        classification_reason: Optional[str] = None,
+    ) -> int:
+        """
+        插入或更新话题分类 (UPSERT)
+
+        Returns:
+            影响的行数
+        """
+        sql = """
+            INSERT INTO topic_classification
+                (topic_id, primary_category, secondary_category, tertiary_category,
+                 industry_tags, event_type, audience_scope, time_sensitivity,
+                 sentiment_intensity, controversy_level, risk_level, risk_keywords,
+                 classification_confidence, classified_by, classification_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                primary_category = VALUES(primary_category),
+                secondary_category = VALUES(secondary_category),
+                tertiary_category = VALUES(tertiary_category),
+                industry_tags = VALUES(industry_tags),
+                event_type = VALUES(event_type),
+                audience_scope = VALUES(audience_scope),
+                time_sensitivity = VALUES(time_sensitivity),
+                sentiment_intensity = VALUES(sentiment_intensity),
+                controversy_level = VALUES(controversy_level),
+                risk_level = VALUES(risk_level),
+                risk_keywords = VALUES(risk_keywords),
+                classification_confidence = VALUES(classification_confidence),
+                classified_by = VALUES(classified_by),
+                classification_reason = VALUES(classification_reason)
+        """
+        industry_json = json.dumps(industry_tags, ensure_ascii=False) if industry_tags else None
+        risk_kw_json = json.dumps(risk_keywords, ensure_ascii=False) if risk_keywords else None
+        return execute_update(
+            sql,
+            (
+                topic_id, primary_category, secondary_category, tertiary_category,
+                industry_json, event_type, audience_scope, time_sensitivity,
+                sentiment_intensity, controversy_level, risk_level, risk_kw_json,
+                classification_confidence, classified_by, classification_reason,
+            ),
+        )
+
+    @staticmethod
+    def get_by_topic_id(topic_id: int) -> Optional[Dict[str, Any]]:
+        """获取话题的分类信息"""
+        sql = "SELECT * FROM topic_classification WHERE topic_id = %s"
+        return execute_query(sql, (topic_id,), fetch_one=True)
+
+    @staticmethod
+    def get_unclassified_topics(limit: int = 100) -> List[Dict[str, Any]]:
+        """获取未分类的话题列表"""
+        sql = """
+            SELECT te.id, te.event_name, te.event_description, te.keywords,
+                   te.dominant_sentiment, te.dominant_emotions, te.content_count
+            FROM topic_event te
+            LEFT JOIN topic_classification tc ON te.id = tc.topic_id
+            WHERE te.status NOT IN ('merged', 'ended')
+              AND tc.id IS NULL
+            ORDER BY te.content_count DESC
+            LIMIT %s
+        """
+        return execute_query(sql, (limit,))
+
+    @staticmethod
+    def get_by_category(
+        primary_category: Optional[str] = None,
+        event_type: Optional[str] = None,
+        risk_level: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """按分类维度查询话题"""
+        sql = """
+            SELECT te.*, tc.primary_category, tc.event_type, tc.risk_level,
+                   tc.classification_confidence
+            FROM topic_event te
+            JOIN topic_classification tc ON te.id = tc.topic_id
+            WHERE te.status NOT IN ('merged', 'ended')
+        """
+        params = []
+        if primary_category:
+            sql += " AND tc.primary_category = %s"
+            params.append(primary_category)
+        if event_type:
+            sql += " AND tc.event_type = %s"
+            params.append(event_type)
+        if risk_level:
+            sql += " AND tc.risk_level = %s"
+            params.append(risk_level)
+        sql += " ORDER BY te.content_count DESC LIMIT %s"
+        params.append(limit)
+        return execute_query(sql, tuple(params))
+
+    @staticmethod
+    def get_high_risk_topics(min_risk: str = "warning", limit: int = 50) -> List[Dict[str, Any]]:
+        """获取高风险话题"""
+        risk_order = {"dangerous": 0, "warning": 1, "attention": 2, "safe": 3}
+        sql = """
+            SELECT te.*, tc.risk_level, tc.primary_category, tc.event_type,
+                   tc.controversy_level, tc.classification_confidence
+            FROM topic_event te
+            JOIN topic_classification tc ON te.id = tc.topic_id
+            WHERE te.status NOT IN ('merged', 'ended')
+              AND tc.risk_level IN ('warning', 'dangerous')
+            ORDER BY FIELD(tc.risk_level, 'dangerous', 'warning')
+            LIMIT %s
+        """
+        return execute_query(sql, (limit,))
+
+    @staticmethod
+    def count_by_primary_category() -> Dict[str, int]:
+        """统计各一级分类的话题数量"""
+        sql = """
+            SELECT tc.primary_category, COUNT(*) as cnt
+            FROM topic_event te
+            JOIN topic_classification tc ON te.id = tc.topic_id
+            WHERE te.status NOT IN ('merged', 'ended')
+            GROUP BY tc.primary_category
+        """
+        rows = execute_query(sql)
+        return {row["primary_category"]: row["cnt"] for row in rows if row["primary_category"]}
+
+    @staticmethod
+    def count_by_event_type() -> Dict[str, int]:
+        """统计各事件类型的话题数量"""
+        sql = """
+            SELECT tc.event_type, COUNT(*) as cnt
+            FROM topic_event te
+            JOIN topic_classification tc ON te.id = tc.topic_id
+            WHERE te.status NOT IN ('merged', 'ended')
+            GROUP BY tc.event_type
+        """
+        rows = execute_query(sql)
+        return {row["event_type"]: row["cnt"] for row in rows if row["event_type"]}
+
+    @staticmethod
+    def delete_by_topic_id(topic_id: int) -> int:
+        """删除话题分类"""
+        sql = "DELETE FROM topic_classification WHERE topic_id = %s"
+        return execute_update(sql, (topic_id,))

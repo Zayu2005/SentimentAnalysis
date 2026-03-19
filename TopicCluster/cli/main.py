@@ -159,7 +159,6 @@ def cmd_wordcloud(args):
         return
 
     if args.all:
-        # 生成所有非合并话题的词云数据
         topics = TopicEventRepo.get_non_merged_topics()
         print(f"\n生成所有话题词云数据...")
         print(f"话题总数: {len(topics)}")
@@ -196,6 +195,86 @@ def cmd_wordcloud(args):
         print(f"  前10词:")
         for item in wordcloud_data[:10]:
             print(f"    {item['word']:12s}  {item['weight']:.4f}")
+
+
+def cmd_classify(args):
+    """LLM 话题分类命令"""
+    from ..classifier import LLMTopicClassifier
+    from ..database import TopicClassificationRepo
+
+    print(f"\n开始话题分类...")
+
+    if args.stats:
+        print("\n分类统计:")
+        by_category = TopicClassificationRepo.count_by_primary_category()
+        if by_category:
+            print(f"\n按一级分类:")
+            for cat, cnt in sorted(by_category.items(), key=lambda x: -x[1]):
+                print(f"  {cat}: {cnt}")
+        else:
+            print("  暂无分类数据")
+
+        by_event = TopicClassificationRepo.count_by_event_type()
+        if by_event:
+            print(f"\n按事件类型:")
+            for et, cnt in sorted(by_event.items(), key=lambda x: -x[1]):
+                print(f"  {et}: {cnt}")
+
+        high_risk = TopicClassificationRepo.get_high_risk_topics(limit=10)
+        if high_risk:
+            print(f"\n高风险话题 (前10):")
+            for t in high_risk:
+                print(f"  [#{t['id']}] {t.get('event_name', '未知')} - {t.get('risk_level', '?')}")
+        return
+
+    if args.show and args.topic_id:
+        classification = TopicClassificationRepo.get_by_topic_id(args.topic_id)
+        if classification:
+            print(f"\n话题 #{args.topic_id} 分类信息:")
+            print(f"  一级分类: {classification.get('primary_category', 'N/A')}")
+            print(f"  二级分类: {classification.get('secondary_category', 'N/A')}")
+            print(f"  事件类型: {classification.get('event_type', 'N/A')}")
+            print(f"  受众范围: {classification.get('audience_scope', 'N/A')}")
+            print(f"  时间敏感度: {classification.get('time_sensitivity', 'N/A')}")
+            print(f"  情感强度: {classification.get('sentiment_intensity', 'N/A')}")
+            print(f"  争议程度: {classification.get('controversy_level', 'N/A')}")
+            print(f"  风险等级: {classification.get('risk_level', 'N/A')}")
+            print(f"  置信度: {classification.get('classification_confidence', 'N/A')}")
+            print(f"  分类来源: {classification.get('classified_by', 'N/A')}")
+        else:
+            print(f"\n话题 #{args.topic_id} 暂无分类信息")
+        return
+
+    print(f"模型: {args.model or '默认'}")
+    if args.dry_run:
+        print("[试运行模式]")
+    if args.only_unclassified:
+        print("[仅未分类话题]")
+
+    classifier = LLMTopicClassifier(model_name=args.model)
+
+    if args.topic_id:
+        result = classifier.classify_and_save(args.topic_id, dry_run=args.dry_run)
+        if result:
+            print(f"\n分类结果:")
+            print(f"  一级分类: {result.get('primary_category')}")
+            print(f"  二级分类: {result.get('secondary_category')}")
+            print(f"  事件类型: {result.get('event_type')}")
+            print(f"  风险等级: {result.get('risk_level')}")
+            print(f"  置信度: {result.get('classification_confidence')}")
+    else:
+        stats = classifier.batch_classify(
+            only_unclassified=args.only_unclassified,
+            dry_run=args.dry_run,
+        )
+        print(f"\n分类结果:")
+        print(f"  总计:   {stats['total']}")
+        print(f"  成功:   {stats['success']}")
+        print(f"  失败:   {stats['error']}")
+
+        if not args.dry_run and stats['success'] > 0:
+            print(f"\n同步分类到 topic_event...")
+            classifier.sync_to_topic_event()
 
 
 def cmd_recluster(args):
@@ -313,6 +392,33 @@ def create_parser() -> argparse.ArgumentParser:
         help="每个话题最多聚合的内容条数 (默认: 200)"
     )
 
+    # classify 命令
+    classify_parser = subparsers.add_parser("classify", help="LLM 话题分类")
+    classify_parser.add_argument(
+        "--topic-id", "-t", type=int, default=None,
+        help="指定话题ID (不指定则批量处理)"
+    )
+    classify_parser.add_argument(
+        "--model", "-m", default=None,
+        help="LLM 模型名称"
+    )
+    classify_parser.add_argument(
+        "--only-unclassified", action="store_true",
+        help="仅处理未分类话题 (默认)"
+    )
+    classify_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="试运行 (不保存结果)"
+    )
+    classify_parser.add_argument(
+        "--stats", action="store_true",
+        help="显示分类统计信息"
+    )
+    classify_parser.add_argument(
+        "--show", action="store_true",
+        help="显示指定话题的分类详情 (需配合 --topic-id)"
+    )
+
     # recluster 命令
     recluster_parser = subparsers.add_parser("recluster", help="全量重聚类")
     recluster_parser.add_argument(
@@ -339,6 +445,7 @@ COMMANDS = {
     "evolve": cmd_evolve,
     "describe": cmd_describe,
     "wordcloud": cmd_wordcloud,
+    "classify": cmd_classify,
     "recluster": cmd_recluster,
 }
 

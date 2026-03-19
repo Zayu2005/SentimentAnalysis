@@ -36,6 +36,7 @@ from .database import (
     TopicEvolutionRepo,
     TopicMergeRepo,
     TopicContentRepo,
+    TopicClassificationRepo,
 )
 
 # 聚类 (延迟导入重量级依赖)
@@ -59,6 +60,13 @@ try:
 except ImportError:
     _LLM_AVAILABLE = False
 
+# 分类器 (可选)
+try:
+    from .classifier import LLMTopicClassifier
+    _CLASSIFIER_AVAILABLE = True
+except ImportError:
+    _CLASSIFIER_AVAILABLE = False
+
 
 __all__ = [
     # 版本
@@ -76,6 +84,7 @@ __all__ = [
     "TopicEvolutionRepo",
     "TopicMergeRepo",
     "TopicContentRepo",
+    "TopicClassificationRepo",
 
     # 聚类
     "BertEmbedder",
@@ -88,7 +97,11 @@ __all__ = [
     # LLM
     "TopicNamer",
 
+    # 分类器
+    "LLMTopicClassifier",
+
     # 可用性标志
     "_CLUSTER_AVAILABLE",
     "_LLM_AVAILABLE",
+    "_CLASSIFIER_AVAILABLE",
 ]

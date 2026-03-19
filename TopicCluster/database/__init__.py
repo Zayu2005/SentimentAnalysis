@@ -2,7 +2,7 @@
 """数据库模块"""
 
 from .connection import get_connection, execute_query, execute_many, execute_update, execute_insert
-from .repository import TopicEventRepo, TopicEvolutionRepo, TopicMergeRepo, TopicContentRepo
+from .repository import TopicEventRepo, TopicEvolutionRepo, TopicMergeRepo, TopicContentRepo, TopicClassificationRepo
 
 __all__ = [
     'get_connection',
@@ -14,4 +14,5 @@ __all__ = [
     'TopicEvolutionRepo',
     'TopicMergeRepo',
     'TopicContentRepo',
+    'TopicClassificationRepo',
 ]
