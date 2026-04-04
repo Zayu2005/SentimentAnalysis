@@ -15,6 +15,7 @@
 
 import sys
 from datetime import datetime
+from typing import Optional, Dict
 
 from .config import config, EvalConfig
 from .evaluators.html_cleaner_eval import HTMLCleanerEvaluator

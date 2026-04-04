@@ -288,13 +288,16 @@ def generate_stopword_test_data(output_path: Optional[str] = None, n: int = 500)
         ["从", "整体", "来看", "这", "个", "产品", "还是", "OK", "的"],
     ]
 
-    default_stopwords = {
-        "的", "了", "是", "在", "我", "有", "和", "就", "不", "人",
-        "都", "一", "上", "也", "很", "到", "说", "要", "去", "你",
-        "会", "着", "没", "看", "好", "自", "己", "这", "那", "他",
-        "们", "什", "么", "怎", "为", "把", "被", "让", "给", "从",
-        "而", "但", "是", "可", "以", "能", "会", "对", "与", "或",
-    }
+    try:
+        sw_set = load_stopwords()
+    except FileNotFoundError:
+        sw_set = {
+            "的", "了", "是", "在", "我", "有", "和", "就", "不", "人",
+            "都", "一", "上", "也", "很", "到", "说", "要", "去", "你",
+            "会", "着", "没", "看", "好", "自", "己", "这", "那", "他",
+            "们", "什", "么", "怎", "为", "把", "被", "让", "给", "从",
+            "而", "但", "是", "可", "以", "能", "会", "对", "与", "或",
+        }
 
     tokenized_texts = []
     gold_filtered = []
@@ -304,7 +307,7 @@ def generate_stopword_test_data(output_path: Optional[str] = None, n: int = 500)
         random.shuffle(tokens)
         tokenized_texts.append(tokens[:])
 
-        filtered = [t for t in tokens if t not in default_stopwords]
+        filtered = [t for t in tokens if t not in sw_set]
         gold_filtered.append(filtered)
 
     data = {
