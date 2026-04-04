@@ -72,7 +72,6 @@ class EvalConfig:
         required_paths = [
             self.sighan_pku_test_path,
             self.nlpcc_test_path,
-            self.lcqmc_test_path,
             self.stopword_path,
         ]
         for p in required_paths:
@@ -80,6 +79,7 @@ class EvalConfig:
                 missing.append(p)
 
         optional_paths = [
+            self.lcqmc_test_path,
             self.custom_dict_path,
             self.sentiment_dict_path,
             self.html_test_data_path,

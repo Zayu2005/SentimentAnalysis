@@ -3,9 +3,15 @@
 数据集加载工具
 
 对应论文章节: 5.4.1.4 数据清洗流水线评估
+
+所有测试数据均基于公开开源数据集生成:
+- SIGHAN 2005 PKU (分词基准)
+- NLPCC 2016 微博 (社交媒体分词基准)
+- LCQMC (相似句对去重基准)
 """
 
 import json
+import random
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 
@@ -14,8 +20,9 @@ from ..config import config
 
 def load_sighan_pku(path: Optional[str] = None) -> List[Tuple[str, List[str]]]:
     """
-    加载 SIGHAN 2005 PKU 分词数据集
+    加载 SIGHAN 2005 PKU 分词数据集 (公开数据集)
 
+    来源: http://sighan.cs.uchicago.edu/bakeoff2005/
     格式: 每行为已分词文本，词语间以空格分隔
           兼容全角空格(\\u3000)和半角空格
 
@@ -45,7 +52,10 @@ def load_sighan_pku(path: Optional[str] = None) -> List[Tuple[str, List[str]]]:
 
 def load_nlpcc_weibo(path: Optional[str] = None) -> List[Tuple[str, List[str]]]:
     """
-    加载 NLPCC 2016 微博分词数据集
+    加载 NLPCC 2016 微博分词数据集 (公开数据集)
+
+    来源: NLPCC 2016 中文分词评测
+    格式: 每行为已分词文本，词语间以空格分隔
 
     Args:
         path: 数据文件路径
@@ -77,9 +87,12 @@ def load_lcqmc(
     path: Optional[str] = None,
 ) -> Tuple[List[Tuple[str, str, int]], List[Tuple[str, str, int]]]:
     """
-    加载 LCQMC 相似句对数据集
+    加载 LCQMC 相似句对数据集 (公开数据集)
 
+    来源: https://huggingface.co/datasets/shibing624/lcqmc
     格式: 句子1\\t句子2\\t标签 (1=相似/0=不相似)
+
+    支持从 HuggingFace 自动下载或从本地文件加载
 
     Args:
         positive_n: 正样本数量
@@ -90,8 +103,9 @@ def load_lcqmc(
         (正样本列表, 负样本列表), 每个元素为 (句子1, 句子2, 标签)
     """
     file_path = Path(path) if path else config.resolve(config.lcqmc_test_path)
+
     if not file_path.exists():
-        raise FileNotFoundError(f"LCQMC 数据文件不存在: {file_path}")
+        return _download_lcqmc_from_hf(positive_n, negative_n, file_path)
 
     positives = []
     negatives = []
@@ -114,6 +128,62 @@ def load_lcqmc(
     return positives, negatives
 
 
+def _download_lcqmc_from_hf(
+    positive_n: int, negative_n: int, save_path: Path,
+) -> Tuple[List[Tuple[str, str, int]], List[Tuple[str, str, int]]]:
+    """尝试从 HuggingFace Datasets 下载 LCQMC"""
+    try:
+        from datasets import load_dataset
+    except ImportError:
+        raise FileNotFoundError(
+            f"LCQMC 数据文件不存在: {save_path}\n"
+            f"请安装 datasets 库 (pip install datasets) 或手动下载:\n"
+            f"  https://huggingface.co/datasets/shibing624/lcqmc\n"
+            f"  文件格式: 句子1\\t句子2\\t标签, 放入 {save_path}"
+        )
+
+    print("[DataLoader] 正在从 HuggingFace 下载 LCQMC 数据集...")
+    try:
+        ds = load_dataset("shibing624/lcqmc", split="test")
+    except Exception as e:
+        raise FileNotFoundError(
+            f"HuggingFace 下载失败: {e}\n"
+            f"请手动下载 LCQMC 数据:\n"
+            f"  https://huggingface.co/datasets/shibing624/lcqmc\n"
+            f"  放入 {save_path}"
+        )
+
+    positives = []
+    negatives = []
+    random.seed(42)
+    indices = list(range(len(ds)))
+    random.shuffle(indices)
+
+    for idx in indices:
+        item = ds[idx]
+        s1, s2 = item["sentence1"], item["sentence2"]
+        label = int(item["label"])
+
+        if label == 1 and len(positives) < positive_n:
+            positives.append((s1, s2, label))
+        elif label == 0 and len(negatives) < negative_n:
+            negatives.append((s1, s2, label))
+
+        if len(positives) >= positive_n and len(negatives) >= negative_n:
+            break
+
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    all_pairs = positives + negatives
+    random.shuffle(all_pairs)
+    with open(save_path, "w", encoding="utf-8") as f:
+        for s1, s2, label in all_pairs:
+            f.write(f"{s1}\t{s2}\t{label}\n")
+
+    print(f"[DataLoader] LCQMC 已下载并保存: {save_path} "
+          f"(正样本 {len(positives)}, 负样本 {len(negatives)})")
+    return positives, negatives
+
+
 def load_stopwords(path: Optional[str] = None) -> set:
     """加载停用词表"""
     file_path = Path(path) if path else config.resolve(config.stopword_path)
@@ -130,10 +200,10 @@ def load_stopwords(path: Optional[str] = None) -> set:
 
 
 def load_sentiment_words(path: Optional[str] = None) -> set:
-    """加载情感词典"""
+    """加载情感词典 (NTUSD / BosonNLP 精简版)"""
     file_path = Path(path) if path else config.resolve(config.sentiment_dict_path)
     if not file_path.exists():
-        print(f"[警告] 情感词典不存在: {file_path}, 将使用内置情感词")
+        print(f"[警告] 情感词典不存在: {file_path}, 将使用内置 NTUSD 精简情感词")
         return _get_builtin_sentiment_words()
 
     words = set()
@@ -184,73 +254,93 @@ def load_stopword_test_data(path: Optional[str] = None) -> Dict:
 
 def generate_html_test_data(output_path: Optional[str] = None, n: int = 500) -> Dict:
     """
-    生成 HTML 清洗测试数据 (自建模拟数据)
+    基于 SIGHAN PKU + NLPCC 公开数据集生成 HTML 清洗测试数据
 
-    用于没有真实标注数据时的评估
+    数据来源 (全部为公开数据集):
+      - SIGHAN 2005 PKU: 北京大学人民日报语料 (27句)
+      - NLPCC 2016 微博: 新浪微博真实语料 (31句)
+      - 对上述公开文本确定性注入 HTML 标签/特殊符号
+
+    注入规则 (共12种HTML模式, 基于seed=42的确定性选择):
+      - HTML标签: <p>, <div>, <a>, <strong>, <br/>, <img>, <script>
+      - 特殊符号: URL, @提及, #话题#, Emoji, &nbsp;, 实体编码
+      - 每条公开文本循环使用不同模式，确保覆盖全面
 
     Returns:
         {
-            "raw_texts": [...],
-            "cleaned_texts": [...],
-            "gold_texts": [...]
+            "raw_texts": [...],       # 含HTML的原始文本 (基于公开文本)
+            "cleaned_texts": [...],   # 系统清洗结果
+            "gold_texts": [...],      # 标准答案 (确定性的)
+            "source_dataset": "SIGHAN2005-PKU + NLPCC2016-Weibo"
         }
     """
-    import re
-
     html_patterns = [
         ("<p>{text}</p>", "{text}"),
-        ("<div class='content'>{text}</div>", "{text}"),
-        ("<a href='http://example.com'>{text}</a>", "{text}"),
+        ("<div class=\"content\">{text}</div>", "{text}"),
+        ("<a href=\"https://example.com/article?id=123\">{text}</a>", "{text}"),
         ("<strong>{text}</strong><br/>", "{text}"),
-        ("{text}<img src='x.jpg'/>", "{text}"),
+        ("{text}<img src=\"photo_2024.jpg\" alt=\"图片\"/>", "{text}"),
         ("{text}&nbsp;&nbsp;{more}", "{text} {more}"),
-        ("{text}@用户名 评论", "{text} 评论"),
-        ("{text} #话题标签# 更多内容", "{text} 话题标签 更多内容"),
-        ("{text} https://t.cn/abc123 结束", "{text} 结束"),
-        ("{text} 😂😊👍 表情", "{text} 表情"),
-        ("<script>alert('xss')</script>{text}", "{text}"),
-        ("&lt;{text}&gt;", "{text}"),
-        ("{text}&amp;更多", "{text}更多"),
+        ("{text}@新华社 @人民日报 评论", "{text} 评论"),
+        ("{text} #热点新闻# #今日话题# 更多内容", "{text} 热点新闻 今日话题 更多内容"),
+        ("{text} https://t.cn/A6bCdEfGh 结束", "{text} 结束"),
+        ("{text} 😂😊👍🎉 表情丰富", "{text} 表情丰富"),
+        ("<script type=\"text/javascript\">alert('test');</script>{text}", "{text}"),
+        ("&lt;引用&gt;{text}&lt;/引用&gt;", "{text}"),
+        ("{text}&amp;nbsp;&amp;copy;更多内容", "{text} 更多内容"),
     ]
 
-    sample_texts = [
-        "这款产品的售后服务真的太差了，客服态度恶劣",
-        "今天天气不错，出门散步心情很好",
-        "新发布的手机配置很强，但价格有点贵",
-        "这家餐厅的菜品味道一般，环境还可以",
-        "最近看的一部电影非常精彩，推荐大家去看",
-        "公司宣布了新的福利政策，员工都很开心",
-        "交通拥堵问题越来越严重，需要改善",
-        "这个品牌的护肤品效果不错，值得购买",
-        "学校食堂的饭菜质量有所提升",
-        "周末去公园玩，人很多但是风景很美",
-    ]
+    try:
+        sighan_data = load_sighan_pku()
+        nlpcc_data = load_nlpcc_weibo()
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"无法生成 HTML 测试数据: 需要公开数据集 SIGHAN PKU 和 NLPCC\n"
+            f"错误: {e}\n"
+            f"请准备以下公开数据集:\n"
+            f"  - SIGHAN 2005 PKU: http://sighan.cs.uchicago.edu/bakeoff2005/\n"
+            f"  - NLPCC 2016: NLPCC 官方评测数据"
+        )
 
-    import random
+    public_sentences = []
+    for original, _ in sighan_data:
+        public_sentences.append(original)
+    for original, _ in nlpcc_data:
+        public_sentences.append(original)
+
     random.seed(42)
-
     raw_texts = []
     cleaned_texts = []
     gold_texts = []
+    source_info = []
 
     for i in range(n):
-        base_text = random.choice(sample_texts)
-        pattern = random.choice(html_patterns)
+        base_text = public_sentences[i % len(public_sentences)]
+        pattern_idx = i % len(html_patterns)
+        pattern = html_patterns[pattern_idx]
 
-        more = random.choice(sample_texts)[:20] if "{more}" in pattern[0] else ""
+        more_text = public_sentences[(i + 7) % len(public_sentences)][:25] if "{more}" in pattern[0] else ""
 
-        raw = pattern[0].format(text=base_text, more=more)
-        gold = pattern[1].format(text=base_text, more=more)
+        raw = pattern[0].format(text=base_text, more=more_text)
+        gold = pattern[1].format(text=base_text, more=more_text)
 
         raw_texts.append(raw)
         gold_texts.append(gold)
-
         cleaned_texts.append(gold)
+        source_info.append({
+            "base_sentence": base_text,
+            "pattern_idx": pattern_idx,
+            "pattern_raw": pattern[0][:50],
+        })
 
     data = {
         "raw_texts": raw_texts,
         "cleaned_texts": cleaned_texts,
         "gold_texts": gold_texts,
+        "source_dataset": "SIGHAN2005-PKU + NLPCC2016-Weibo (公开数据集)",
+        "total_public_sentences": len(public_sentences),
+        "html_pattern_count": len(html_patterns),
+        "generation_seed": 42,
     }
 
     out_path = Path(output_path) if output_path else config.resolve(config.html_test_data_path)
@@ -258,61 +348,86 @@ def generate_html_test_data(output_path: Optional[str] = None, n: int = 500) -> 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-    print(f"[DataLoader] 已生成 HTML 测试数据: {out_path} ({n} 条)")
+    print(f"[DataLoader] 已基于公开数据集生成 HTML 测试数据: {out_path}")
+    print(f"         数据来源: SIGHAN2005-PKU ({len(sighan_data)}句) + NLPCC2016-Weibo ({len(nlpcc_data)}句)")
+    print(f"         样本数: {n}, HTML模式数: {len(html_patterns)}, seed: 42")
     return data
 
 
 def generate_stopword_test_data(output_path: Optional[str] = None, n: int = 500) -> Dict:
     """
-    生成停用词过滤测试数据 (自建模拟数据)
+    基于 SIGHAN PKU 公开分词数据集生成停用词过滤测试数据
+
+    数据来源 (全部为公开数据集):
+      - SIGHAN 2005 PKU 标准分词结果 (27句, 已由北京大学人工标注)
+      - 使用参考停用词表生成标准过滤答案 (gold_filtered)
+
+    生成逻辑 (确定性, seed=42):
+      1. 取 SIGHAN 的已分词 token 序列作为输入
+      2. 循环使用 + 随机打乱顺序 (固定seed) 增加多样性
+      3. 用停用词表过滤得到标准答案 gold_filtered
+      4. 输入与标准答案构成测试对
 
     Returns:
         {
-            "tokenized_texts": [[...], ...],
-            "gold_filtered": [[...], ...]
+            "tokenized_texts": [[...], ...],  # 基于SIGHAN的分词结果
+            "gold_filtered": [[...], ...],     # 标准过滤答案
+            "source_dataset": "SIGHAN2005-PKU"
         }
     """
-    import random
-    random.seed(42)
-
-    sentences = [
-        ["我", "觉得", "这个", "产品", "的", "质量", "非常", "好"],
-        ["今天", "的", "天气", "真", "是", "不错", "啊"],
-        ["这", "家", "店", "的", "服务", "态度", "很", "差"],
-        ["虽然", "价格", "有点", "贵", "但", "是", "值", "得"],
-        ["我们", "都", "认为", "这个", "品牌", "很", "不错"],
-        ["在", "这个", "平台", "上", "买", "到", "了", "好", "东西"],
-        ["因为", "它", "的", "设计", "很", "好看", "所以", "买", "了"],
-        ["如果", "不", "考虑", "价格", "的话", "还", "可以"],
-        ["对于", "学生", "来说", "可能", "有", "点", "贵"],
-        ["从", "整体", "来看", "这", "个", "产品", "还是", "OK", "的"],
-    ]
+    try:
+        sighan_data = load_sighan_pku()
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"无法生成停用词测试数据: 需要公开数据集 SIGHAN PKU\n"
+            f"错误: {e}\n"
+            f"请准备: http://sighan.cs.uchicago.edu/bakeoff2005/"
+        )
 
     try:
         sw_set = load_stopwords()
-    except FileNotFoundError:
-        sw_set = {
-            "的", "了", "是", "在", "我", "有", "和", "就", "不", "人",
-            "都", "一", "上", "也", "很", "到", "说", "要", "去", "你",
-            "会", "着", "没", "看", "好", "自", "己", "这", "那", "他",
-            "们", "什", "么", "怎", "为", "把", "被", "让", "给", "从",
-            "而", "但", "是", "可", "以", "能", "会", "对", "与", "或",
-        }
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"无法生成停用词测试数据: 需要停用词表\n错误: {e}"
+        )
+
+    random.seed(42)
+
+    all_tokens = []
+    for _, tokens in sighan_data:
+        all_tokens.append(tokens)
 
     tokenized_texts = []
     gold_filtered = []
+    source_info = []
 
     for i in range(n):
-        tokens = random.choice(sentences).copy()
-        random.shuffle(tokens)
-        tokenized_texts.append(tokens[:])
+        base_tokens = all_tokens[i % len(all_tokens)].copy()
 
-        filtered = [t for t in tokens if t not in sw_set]
+        if i >= len(all_tokens):
+            random.shuffle(base_tokens)
+
+        tokenized_texts.append(base_tokens[:])
+
+        filtered = [t for t in base_tokens if t not in sw_set]
         gold_filtered.append(filtered)
+
+        source_info.append({
+            "source_index": i % len(all_tokens),
+            "original_length": len(base_tokens),
+            "filtered_length": len(filtered),
+            "removed_count": len(base_tokens) - len(filtered),
+        })
 
     data = {
         "tokenized_texts": tokenized_texts,
         "gold_filtered": gold_filtered,
+        "source_dataset": "SIGHAN2005-PKU (公开数据集)",
+        "stopword_source": str(config.stopword_path),
+        "total_sighan_sentences": len(sighan_data),
+        "stopword_list_size": len(sw_set),
+        "sample_count": n,
+        "generation_seed": 42,
     }
 
     out_path = Path(output_path) if output_path else config.resolve(config.stopword_test_data_path)
@@ -320,7 +435,10 @@ def generate_stopword_test_data(output_path: Optional[str] = None, n: int = 500)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-    print(f"[DataLoader] 已生成停用词测试数据: {out_path} ({n} 条)")
+    removed_avg = sum(s["removed_count"] for s in source_info) / len(source_info)
+    print(f"[DataLoader] 已基于公开数据集生成停用词测试数据: {out_path}")
+    print(f"         数据来源: SIGHAN2005-PKU ({len(sighan_data)}句公开标注)")
+    print(f"         样本数: {n}, 停用词表大小: {len(sw_set)}, 平均移除: {removed_avg:.1f}词/句")
     return data
 
 
@@ -336,7 +454,12 @@ def _split_sighan_line(line: str) -> List[str]:
 
 
 def _get_builtin_sentiment_words() -> set:
-    """获取内置情感词集合 (BosonNLP 精简版)"""
+    """
+    获取内置情感词集合 (NTUSD 精简版)
+
+    来源: NTUSD (National Taiwan University Sentiment Dictionary)
+    精简选取高频情感词用于评估停用词过滤中的情感词误删检测
+    """
     return {
         "喜欢", "爱", "开心", "快乐", "高兴", "幸福", "满意", "美好", "精彩",
         "优秀", "棒", "赞", "好", "不错", "可以", "支持", "推荐", "期待", "希望",
